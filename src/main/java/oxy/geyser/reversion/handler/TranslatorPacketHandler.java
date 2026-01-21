@@ -6,29 +6,29 @@ import com.github.blackjack200.ouranos.shaded.protocol.bedrock.codec.v589.Bedroc
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import lombok.Getter;
-import net.raphimc.minecraftauth.bedrock.model.MinecraftMultiplayerToken;
+
 import org.cloudburstmc.protocol.bedrock.codec.BedrockCodec;
 import org.cloudburstmc.protocol.bedrock.codec.compat.BedrockCompat;
 import org.cloudburstmc.protocol.bedrock.data.PacketCompressionAlgorithm;
 import org.cloudburstmc.protocol.bedrock.packet.*;
 import org.cloudburstmc.protocol.common.PacketSignal;
 import org.geysermc.geyser.GeyserImpl;
-import org.geysermc.geyser.api.event.bedrock.SessionInitializeEvent;
+
 import org.geysermc.geyser.event.type.SessionLoadResourcePacksEventImpl;
 import org.geysermc.geyser.network.GameProtocol;
 import org.geysermc.geyser.registry.BlockRegistries;
 import org.geysermc.geyser.registry.Registries;
 import org.geysermc.geyser.session.GeyserSession;
-import org.geysermc.geyser.session.auth.AuthData;
+
 import org.geysermc.geyser.text.GeyserLocale;
-import org.geysermc.geyser.util.LoginEncryptionUtils;
+
 import oxy.geyser.reversion.DuplicatedProtocolInfo;
 import oxy.geyser.reversion.GeyserReversion;
 import oxy.geyser.reversion.handler.duplicated.UpstreamPacketHandler;
 import oxy.geyser.reversion.session.GeyserTranslatedUser;
 import oxy.geyser.reversion.util.ClientDataUtil;
 import oxy.geyser.reversion.util.GeyserUtil;
-import oxy.geyser.reversion.util.PendingBedrockAuthentication;
+
 
 import java.util.List;
 import java.util.UUID;
@@ -165,61 +165,40 @@ public final class TranslatorPacketHandler extends UpstreamPacketHandler {
 
     @Override
     public PacketSignal handle(SetLocalPlayerAsInitializedPacket packet) {
-        if (this.user != null && !this.user.isAuthenticated()) {
+        if (this.user != null && !authenticationStarted) {
             this.authenticate();
         }
         return super.handle(packet);
     }
 
+    private boolean authenticationStarted = false;
+
     private void authenticate() {
-        // This just looks cool - idk
-        // Yes it does! (oxy)
-        SetTimePacket packet = new SetTimePacket();
-        packet.setTime(16000);
-        session.sendUpstreamPacket(packet);
-
-        final PendingBedrockAuthentication.AuthenticationTask task = GeyserReversion.AUTH.getOrCreateTask(session.getAuthData().xuid() + "-" + session.getAuthData().uuid() + "-" + session.getAuthData().name());
-
-        if (task.getAuthentication() != null && task.getAuthentication().isDone()) {
-            onMicrosoftLoginComplete(task);
-        } else {
-            task.resetRunningFlow();
-            task.performLoginAttempt(code -> {
-                if (!this.session.isClosed()) {
-                    LoginEncryptionUtils.buildAndShowMicrosoftCodeWindow(this.session, code);
-                }
-            }).handle((r, e) -> onMicrosoftLoginComplete(task));
+        if (authenticationStarted) {
+            return; // Already started authentication, don't restart
         }
+        authenticationStarted = true;
+        
+        // Use Geyser's built-in Microsoft authentication system
+        // This avoids classloader issues with MsaDeviceCode types
+        session.authenticateWithMicrosoftCode();
+        
+        // Note: user.setAuthenticated(true) will be called when the session actually logs in.
+        // Geyser will handle disconnecting the player if auth fails.
+        // We set authenticated = true in handlePacket when session.isLoggedIn() becomes true.
     }
 
-    public boolean onMicrosoftLoginComplete(PendingBedrockAuthentication.AuthenticationTask task) {
-        if (session.isClosed()) {
-            return true;
-        }
-
-        task.cleanup();
-        return task.getAuthentication().handle((result, ex) -> {
-            this.session.closeForm();
-            this.session.sendUpstreamPacket(new ClientboundCloseFormPacket()); // Send again this just in case...
-
-            MinecraftMultiplayerToken token = result.getMinecraftMultiplayerToken().getCached();
-            this.session.setAuthData(new AuthData(token.getDisplayName(), token.getUuid(), token.getXuid(), this.session.getAuthData().issuedAt()));
-            geyser.getSessionManager().addPendingSession(this.session);
-            geyser.eventBus().fire(new SessionInitializeEvent(this.session));
-
-            session.sendMessage("Authenticating in the server as " + token.getDisplayName());
-
-            this.user.setAuthenticated(true);
-            this.session.authenticate(session.getAuthData().name());
-            return true;
-        }).getNow(false);
-    }
 
     @Override
     public PacketSignal handlePacket(BedrockPacket packet) {
         if (this.user == null) {
             super.handlePacket(packet);
             return PacketSignal.HANDLED;
+        }
+        
+        // Mark as authenticated only when Geyser confirms successful login
+        if (!this.user.isAuthenticated() && session.isLoggedIn()) {
+            this.user.setAuthenticated(true);
         }
 
         final ByteBuf input = Unpooled.buffer(), output = Unpooled.buffer();

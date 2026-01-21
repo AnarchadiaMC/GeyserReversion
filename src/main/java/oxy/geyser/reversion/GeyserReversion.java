@@ -39,7 +39,7 @@ import oxy.geyser.reversion.transformer.BaseBedrockCodecHelperTransformer;
 import oxy.geyser.reversion.util.ClassLoaderPriorityUtil;
 import oxy.geyser.reversion.util.CodecUtil;
 import oxy.geyser.reversion.util.GeyserExtensionClassProvider;
-import oxy.geyser.reversion.util.PendingBedrockAuthentication;
+
 
 import java.lang.reflect.Field;
 import java.net.InetSocketAddress;
@@ -54,7 +54,7 @@ public class GeyserReversion implements Extension {
 
     private static final TransportHelper.TransportType TRANSPORT = TransportHelper.TRANSPORT_TYPE;
 
-    public static PendingBedrockAuthentication AUTH = new PendingBedrockAuthentication();
+
 
     public static Config CONFIG;
 
