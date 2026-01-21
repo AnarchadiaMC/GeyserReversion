@@ -1,0 +1,3 @@
+[submodule "libs/Ouranos"]
+	path = libs/Ouranos
+	url = https://github.com/oryxel1/Ouranos

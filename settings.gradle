@@ -1,1 +1,5 @@
 rootProject.name = 'GeyserReversion'
+
+// Note: Ouranos is a submodule in libs/Ouranos
+// It needs to be built separately first: cd libs/Ouranos && ./gradlew shadowJar
+// Then its output JAR in libs/Ouranos/build/libs/ is used as a dependency
