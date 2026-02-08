@@ -40,7 +40,6 @@ import oxy.geyser.reversion.util.ClassLoaderPriorityUtil;
 import oxy.geyser.reversion.util.CodecUtil;
 import oxy.geyser.reversion.util.GeyserExtensionClassProvider;
 
-
 import java.lang.reflect.Field;
 import java.net.InetSocketAddress;
 
@@ -48,17 +47,17 @@ import static org.cloudburstmc.netty.channel.raknet.RakConstants.DEFAULT_GLOBAL_
 import static org.cloudburstmc.netty.channel.raknet.RakConstants.DEFAULT_PACKET_LIMIT;
 
 public class GeyserReversion implements Extension {
+
     public static ExtensionLogger LOGGER;
 
     public static BedrockCodec OLDEST_GEYSER_CODEC = CodecUtil.rebuildCodec(Bedrock_v844.CODEC);
 
     private static final TransportHelper.TransportType TRANSPORT = TransportHelper.TRANSPORT_TYPE;
 
-
-
     public static Config CONFIG;
 
     public static boolean INJECTION_FAILED = false;
+
     @Subscribe
     public void onGeyserPreInitializeEvent(GeyserPreInitializeEvent event) {
         LOGGER = this.logger();
@@ -96,7 +95,7 @@ public class GeyserReversion implements Extension {
             bedrockThreadCount = Math.max(1, SystemPropertyUtil.getInt("io.netty.eventLoopThreads", NettyRuntime.availableProcessors() * 2));
         }
 
-        final EventLoopGroup group = TRANSPORT.eventLoopGroupFactory().apply(Bootstraps.isReusePortAvailable() ?  Integer.getInteger("Geyser.ListenCount", 1) : 1, new DefaultThreadFactory("GeyserServer", true));
+        final EventLoopGroup group = TRANSPORT.eventLoopGroupFactory().apply(Bootstraps.isReusePortAvailable() ? Integer.getInteger("Geyser.ListenCount", 1) : 1, new DefaultThreadFactory("GeyserServer", true));
         final EventLoopGroup childGroup = TRANSPORT.eventLoopGroupFactory().apply(bedrockThreadCount, new DefaultThreadFactory("GeyserServerChild", true));
 
         TranslatorServerInitializer serverInitializer = new TranslatorServerInitializer(geyser);
@@ -115,7 +114,7 @@ public class GeyserReversion implements Extension {
                 .option(RakChannelOption.RAK_SEND_COOKIE, rakSendCookie)
                 .childHandler(serverInitializer);
 
-        Bootstraps.setupBootstrap(bootstrap);
+        setupBootstrapCompat(bootstrap);
 
         final Field field = GeyserServer.class.getDeclaredField("bootstrapFutures");
         field.setAccessible(true);
@@ -184,6 +183,34 @@ public class GeyserReversion implements Extension {
                     "Invalid integer value for " + property + ": " + value + ". Using default value: " + defaultValue
             );
             return defaultValue;
+        }
+    }
+
+    /**
+     * Compatibility wrapper for Bootstraps.setupBootstrap - supports both old
+     * and new Geyser API. New API (2.9.3+): setupBootstrap(AbstractBootstrap,
+     * TransportType) Old API: setupBootstrap(AbstractBootstrap)
+     */
+    private void setupBootstrapCompat(ServerBootstrap bootstrap) {
+        try {
+            // Try new API first (Geyser 2.9.3+)
+            var method = Bootstraps.class.getMethod("setupBootstrap",
+                    io.netty.bootstrap.AbstractBootstrap.class,
+                    TransportHelper.TransportType.class);
+            method.invoke(null, bootstrap, TRANSPORT);
+            LOGGER.debug("Using new Bootstraps.setupBootstrap(bootstrap, transport) API");
+        } catch (NoSuchMethodException e) {
+            // Fall back to old API
+            try {
+                var method = Bootstraps.class.getMethod("setupBootstrap",
+                        io.netty.bootstrap.AbstractBootstrap.class);
+                method.invoke(null, bootstrap);
+                LOGGER.debug("Using legacy Bootstraps.setupBootstrap(bootstrap) API");
+            } catch (Exception ex) {
+                throw new RuntimeException("Failed to call Bootstraps.setupBootstrap - no compatible method found", ex);
+            }
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to call Bootstraps.setupBootstrap", e);
         }
     }
 }
