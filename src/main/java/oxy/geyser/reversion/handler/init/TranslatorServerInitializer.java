@@ -30,6 +30,7 @@ import io.netty.channel.DefaultEventLoopGroup;
 import io.netty.util.concurrent.DefaultThreadFactory;
 import lombok.Getter;
 import org.checkerframework.checker.nullness.qual.NonNull;
+import org.cloudburstmc.netty.channel.raknet.config.RakChannelOption;
 import org.cloudburstmc.protocol.bedrock.BedrockPeer;
 import org.cloudburstmc.protocol.bedrock.BedrockServerSession;
 import org.cloudburstmc.protocol.bedrock.netty.codec.packet.BedrockPacketCodec;
@@ -44,12 +45,22 @@ import java.net.InetSocketAddress;
 
 public class TranslatorServerInitializer extends BedrockServerInitializer {
     private final GeyserImpl geyser;
+    private final boolean rakCookiesEnabled;
     // There is a constructor that doesn't require inputting threads, but older Netty versions don't have it
     @Getter
     private final DefaultEventLoopGroup eventLoopGroup = new DefaultEventLoopGroup(0, new DefaultThreadFactory("Geyser player thread"));
 
-    public TranslatorServerInitializer(GeyserImpl geyser) {
+    public TranslatorServerInitializer(GeyserImpl geyser, boolean rakCookiesEnabled) {
         this.geyser = geyser;
+        this.rakCookiesEnabled = rakCookiesEnabled;
+    }
+
+    @Override
+    protected void preInitChannel(Channel channel) throws Exception {
+        if (!rakCookiesEnabled) {
+            channel.setOption(RakChannelOption.RAK_PROTOCOL_VERSION, 11);
+        }
+        super.preInitChannel(channel);
     }
 
     @Override
@@ -65,8 +76,10 @@ public class TranslatorServerInitializer extends BedrockServerInitializer {
             bedrockServerSession.setLogging(true);
             GeyserSession session = new GeyserSession(this.geyser, bedrockServerSession, this.eventLoopGroup.next());
 
-            Channel channel = bedrockServerSession.getPeer().getChannel();
-            channel.pipeline().addAfter(BedrockPacketCodec.NAME, InvalidPacketHandler.NAME, new InvalidPacketHandler(session));
+            if (!bedrockServerSession.isSubClient()) {
+                Channel channel = bedrockServerSession.getPeer().getChannel();
+                channel.pipeline().addAfter(BedrockPacketCodec.NAME, InvalidPacketHandler.NAME, new InvalidPacketHandler(session));
+            }
 
             bedrockServerSession.setPacketHandler(new TranslatorPacketHandler(this.geyser, session));
         } catch (Throwable e) {

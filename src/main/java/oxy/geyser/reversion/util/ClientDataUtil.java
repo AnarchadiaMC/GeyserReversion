@@ -33,7 +33,6 @@ public class ClientDataUtil {
             long issuedAt = rawIssuedAt != null ? rawIssuedAt : -1;
 
             ChainValidationResult.IdentityData extraData = result.identityClaims().extraData;
-            session.setAuthData(new AuthData(extraData.displayName, extraData.identity, extraData.xuid, issuedAt));
             if (packet.getAuthPayload() instanceof TokenPayload tokenPayload) {
                 session.setToken(tokenPayload.getToken());
             } else if (packet.getAuthPayload() instanceof CertificateChainPayload certificateChainPayload) {
@@ -55,6 +54,7 @@ public class ClientDataUtil {
 
             data.setOriginalString(packet.getClientJwt());
             session.setClientData(data.toGeyser());
+            session.setAuthData(new AuthData(extraData.displayName, extraData.identity, extraData.xuid, issuedAt, data.getPlayFabId()));
 
             try {
                 startEncryptionHandshake(session, identityPublicKey);

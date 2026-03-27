@@ -98,11 +98,10 @@ public class GeyserReversion implements Extension {
         final EventLoopGroup group = TRANSPORT.eventLoopGroupFactory().apply(Bootstraps.isReusePortAvailable() ? Integer.getInteger("Geyser.ListenCount", 1) : 1, new DefaultThreadFactory("GeyserServer", true));
         final EventLoopGroup childGroup = TRANSPORT.eventLoopGroupFactory().apply(bedrockThreadCount, new DefaultThreadFactory("GeyserServerChild", true));
 
-        TranslatorServerInitializer serverInitializer = new TranslatorServerInitializer(geyser);
-
         int rakPacketLimit = positivePropOrDefault("Geyser.RakPacketLimit", DEFAULT_PACKET_LIMIT);
         int rakGlobalPacketLimit = positivePropOrDefault("Geyser.RakGlobalPacketLimit", DEFAULT_GLOBAL_PACKET_LIMIT);
         boolean rakSendCookie = Boolean.parseBoolean(System.getProperty("Geyser.RakSendCookie", "true"));
+        TranslatorServerInitializer serverInitializer = new TranslatorServerInitializer(geyser, rakSendCookie);
 
         final ServerBootstrap bootstrap = new ServerBootstrap()
                 .channelFactory(RakChannelFactory.server(TRANSPORT.datagramChannelClass()))
@@ -111,8 +110,8 @@ public class GeyserReversion implements Extension {
                 .option(RakChannelOption.RAK_MAX_MTU, geyser.config().advanced().bedrock().mtu())
                 .option(RakChannelOption.RAK_PACKET_LIMIT, rakPacketLimit)
                 .option(RakChannelOption.RAK_GLOBAL_PACKET_LIMIT, rakGlobalPacketLimit)
-                .option(RakChannelOption.RAK_SEND_COOKIE, rakSendCookie)
                 .childHandler(serverInitializer);
+        applyRakCookieCompatibility(bootstrap, rakSendCookie);
 
         setupBootstrapCompat(bootstrap);
 
@@ -184,6 +183,36 @@ public class GeyserReversion implements Extension {
             );
             return defaultValue;
         }
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private void applyRakCookieCompatibility(ServerBootstrap bootstrap, boolean rakSendCookie) {
+        try {
+            var cookieModeOption = RakChannelOption.class.getField("RAK_SERVER_COOKIE_MODE").get(null);
+            Class<?> cookieModeClass = Class.forName("org.cloudburstmc.netty.channel.raknet.config.RakServerCookieMode");
+            Object cookieMode = Enum.valueOf((Class<? extends Enum>) cookieModeClass.asSubclass(Enum.class),
+                    rakSendCookie ? "ACTIVE" : "INVALID");
+            bootstrap.option((io.netty.channel.ChannelOption) cookieModeOption, cookieMode);
+            return;
+        } catch (ClassNotFoundException | NoSuchFieldException ignored) {
+            // Fall back to pre-2.9.5 cookie options.
+        } catch (IllegalAccessException e) {
+            throw new RuntimeException("Failed to configure RakNet cookie mode", e);
+        }
+
+        for (String optionName : new String[]{"RAK_SEND_COOKIE", "RAK_SERVER_COOKIE"}) {
+            try {
+                Object option = RakChannelOption.class.getField(optionName).get(null);
+                bootstrap.option((io.netty.channel.ChannelOption) option, rakSendCookie);
+                return;
+            } catch (NoSuchFieldException ignored) {
+                // Try next compatible field name.
+            } catch (IllegalAccessException e) {
+                throw new RuntimeException("Failed to read RakChannelOption." + optionName, e);
+            }
+        }
+
+        LOGGER.debug("No compatible RakNet cookie option found; continuing without cookie configuration");
     }
 
     /**
