@@ -84,6 +84,6 @@ public final class TranslatorSendListener extends UpstreamSession {
 
     @Override
     public int getProtocolVersion() {
-        return this.user == null ? super.getProtocolVersion() : GeyserReversion.OLDEST_GEYSER_CODEC.getProtocolVersion();
+        return this.user == null ? super.getProtocolVersion() : GeyserReversion.BRIDGE_GEYSER_CODEC.getProtocolVersion();
     }
 }

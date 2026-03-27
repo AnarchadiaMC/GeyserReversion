@@ -53,7 +53,7 @@ public final class TranslatorPacketHandler extends UpstreamPacketHandler {
             return PacketSignal.HANDLED;
         }
 
-        packet.setProtocolVersion(GeyserReversion.OLDEST_GEYSER_CODEC.getProtocolVersion());
+        packet.setProtocolVersion(GeyserReversion.BRIDGE_GEYSER_CODEC.getProtocolVersion());
         session.getUpstream().getSession().setCodec(DuplicatedProtocolInfo.getPacketCodec(this.clientProtocol));
 
         PacketCompressionAlgorithm algorithm = PacketCompressionAlgorithm.ZLIB;
@@ -80,8 +80,8 @@ public final class TranslatorPacketHandler extends UpstreamPacketHandler {
             return PacketSignal.HANDLED;
         }
 
-        this.user = new GeyserTranslatedUser(pv, GeyserReversion.OLDEST_GEYSER_CODEC.getProtocolVersion(), this.session);
-        packet.setProtocolVersion(GeyserReversion.OLDEST_GEYSER_CODEC.getProtocolVersion());
+        this.user = new GeyserTranslatedUser(pv, GeyserReversion.BRIDGE_GEYSER_CODEC.getProtocolVersion(), this.session);
+        packet.setProtocolVersion(GeyserReversion.BRIDGE_GEYSER_CODEC.getProtocolVersion());
         session.getUpstream().getSession().setCodec(DuplicatedProtocolInfo.getPacketCodec(this.clientProtocol));
         GeyserUtil.hook(session);
 

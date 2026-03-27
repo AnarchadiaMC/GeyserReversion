@@ -53,11 +53,13 @@ import org.cloudburstmc.protocol.bedrock.codec.v827.Bedrock_v827;
 import org.cloudburstmc.protocol.bedrock.codec.v844.Bedrock_v844;
 import org.cloudburstmc.protocol.bedrock.data.EncodingSettings;
 
+import java.util.Collections;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class DuplicatedProtocolInfo {
     private static final Set<BedrockCodec> PACKET_CODECS = ConcurrentHashMap.newKeySet();
+    private static final Set<BedrockCodec> UNMODIFIABLE_PACKET_CODECS = Collections.unmodifiableSet(PACKET_CODECS);
 
     public static BedrockCodec getPacketCodec(int protocolVersion) {
         for(BedrockCodec packetCodec : PACKET_CODECS) {
@@ -73,6 +75,10 @@ public class DuplicatedProtocolInfo {
         BedrockCodecHelper helper = packetCodec.createHelper();
         helper.setEncodingSettings(EncodingSettings.builder().maxListSize(Integer.MAX_VALUE).maxByteArraySize(Integer.MAX_VALUE).maxNetworkNBTSize(Integer.MAX_VALUE).maxItemNBTSize(Integer.MAX_VALUE).maxStringLength(Integer.MAX_VALUE).build());
         PACKET_CODECS.add(packetCodec.toBuilder().helper(() -> helper).build());
+    }
+
+    public static Set<BedrockCodec> getPacketCodecs() {
+        return UNMODIFIABLE_PACKET_CODECS;
     }
 
     static {

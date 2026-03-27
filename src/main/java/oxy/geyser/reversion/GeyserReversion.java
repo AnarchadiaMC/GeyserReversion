@@ -25,6 +25,7 @@ import org.geysermc.geyser.api.event.lifecycle.GeyserPreInitializeEvent;
 import org.geysermc.geyser.api.extension.Extension;
 import org.geysermc.geyser.api.extension.ExtensionLogger;
 import org.geysermc.geyser.configuration.GeyserConfig;
+import org.geysermc.geyser.network.GameProtocol;
 import org.geysermc.geyser.network.netty.Bootstraps;
 import org.geysermc.geyser.network.netty.GeyserServer;
 import org.geysermc.geyser.network.netty.handler.RakConnectionRequestHandler;
@@ -42,6 +43,7 @@ import oxy.geyser.reversion.util.GeyserExtensionClassProvider;
 
 import java.lang.reflect.Field;
 import java.net.InetSocketAddress;
+import java.util.Comparator;
 
 import static org.cloudburstmc.netty.channel.raknet.RakConstants.DEFAULT_GLOBAL_PACKET_LIMIT;
 import static org.cloudburstmc.netty.channel.raknet.RakConstants.DEFAULT_PACKET_LIMIT;
@@ -50,7 +52,7 @@ public class GeyserReversion implements Extension {
 
     public static ExtensionLogger LOGGER;
 
-    public static BedrockCodec OLDEST_GEYSER_CODEC = CodecUtil.rebuildCodec(Bedrock_v844.CODEC);
+    public static BedrockCodec BRIDGE_GEYSER_CODEC = CodecUtil.rebuildCodec(Bedrock_v844.CODEC);
 
     private static final TransportHelper.TransportType TRANSPORT = TransportHelper.TRANSPORT_TYPE;
 
@@ -86,6 +88,9 @@ public class GeyserReversion implements Extension {
         CONFIG = ConfigLoader.load(this, GeyserReversion.class, Config.class);
 
         final GeyserImpl geyser = GeyserImpl.getInstance();
+        BRIDGE_GEYSER_CODEC = resolveBridgeCodec();
+        LOGGER.info("Using Bedrock bridge codec " + BRIDGE_GEYSER_CODEC.getMinecraftVersion()
+                + " (" + BRIDGE_GEYSER_CODEC.getProtocolVersion() + ") for translated clients.");
         // We have to kill off the server then restart again :D to use our packet handler...
         geyser.getGeyserServer().shutdown();
 
@@ -183,6 +188,16 @@ public class GeyserReversion implements Extension {
             );
             return defaultValue;
         }
+    }
+
+    private BedrockCodec resolveBridgeCodec() {
+        return DuplicatedProtocolInfo.getPacketCodecs().stream()
+                .filter(codec -> GameProtocol.getBedrockCodec(codec.getProtocolVersion()) != null)
+                .max(Comparator.comparingInt(BedrockCodec::getProtocolVersion))
+                .orElseThrow(() -> new IllegalStateException(
+                        "No shared Bedrock codec found between Geyser and GeyserReversion. " +
+                                "Update either Geyser or this extension."
+                ));
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})
