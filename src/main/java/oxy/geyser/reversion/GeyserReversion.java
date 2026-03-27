@@ -191,13 +191,22 @@ public class GeyserReversion implements Extension {
     }
 
     private BedrockCodec resolveBridgeCodec() {
-        return DuplicatedProtocolInfo.getPacketCodecs().stream()
+        BedrockCodec sharedCodec = DuplicatedProtocolInfo.getPacketCodecs().stream()
                 .filter(codec -> GameProtocol.getBedrockCodec(codec.getProtocolVersion()) != null)
                 .max(Comparator.comparingInt(BedrockCodec::getProtocolVersion))
-                .orElseThrow(() -> new IllegalStateException(
-                        "No shared Bedrock codec found between Geyser and GeyserReversion. " +
-                                "Update either Geyser or this extension."
-                ));
+                .orElse(null);
+        if (sharedCodec != null) {
+            return sharedCodec;
+        }
+
+        BedrockCodec fallbackCodec = DuplicatedProtocolInfo.getPacketCodecs().stream()
+                .max(Comparator.comparingInt(BedrockCodec::getProtocolVersion))
+                .orElseThrow(() -> new IllegalStateException("GeyserReversion has no Bedrock codecs available."));
+        LOGGER.warning("No shared Bedrock codec found between Geyser (" + GameProtocol.getAllSupportedBedrockVersions()
+                + ") and GeyserReversion. Falling back to local bridge codec "
+                + fallbackCodec.getMinecraftVersion() + " (" + fallbackCodec.getProtocolVersion()
+                + ") to keep translated clients enabled.");
+        return fallbackCodec;
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})
