@@ -66,11 +66,17 @@ public class TranslatorServerInitializer extends BedrockServerInitializer {
     @Override
     public void initSession(@NonNull BedrockServerSession bedrockServerSession) {
         try {
-            if (this.geyser.getGeyserServer().getProxiedAddresses() != null) {
-                InetSocketAddress address = this.geyser.getGeyserServer().getProxiedAddresses().get((InetSocketAddress) bedrockServerSession.getSocketAddress());
-                if (address != null) {
-                    ((GeyserBedrockPeer) bedrockServerSession.getPeer()).setProxiedAddress(address);
+            try {
+                java.lang.reflect.Method getProxiedAddressesMethod = this.geyser.getGeyserServer().getClass().getMethod("getProxiedAddresses");
+                java.util.Map<java.net.InetSocketAddress, java.net.InetSocketAddress> proxiedAddresses = (java.util.Map<java.net.InetSocketAddress, java.net.InetSocketAddress>) getProxiedAddressesMethod.invoke(this.geyser.getGeyserServer());
+                if (proxiedAddresses != null) {
+                    InetSocketAddress address = proxiedAddresses.get((InetSocketAddress) bedrockServerSession.getSocketAddress());
+                    if (address != null) {
+                        ((GeyserBedrockPeer) bedrockServerSession.getPeer()).setProxiedAddress(address);
+                    }
                 }
+            } catch (NoSuchMethodException | IllegalAccessException | java.lang.reflect.InvocationTargetException ignored) {
+                // Method no longer exists in newer versions of Geyser, safe to ignore.
             }
 
             bedrockServerSession.setLogging(true);
