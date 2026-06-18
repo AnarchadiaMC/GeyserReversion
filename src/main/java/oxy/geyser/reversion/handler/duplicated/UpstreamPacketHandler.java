@@ -200,11 +200,6 @@ public class UpstreamPacketHandler extends LoggingPacketHandler {
         }
         receivedLoginPacket = true;
 
-        if (geyser.getSessionManager().reachedMaxConnectionsPerAddress(session)) {
-            session.disconnect("Too many connections are originating from this location!");
-            return PacketSignal.HANDLED;
-        }
-
         // Set the block translation based off of version
         session.setBlockMappings(BlockRegistries.BLOCKS.forVersion(loginPacket.getProtocolVersion()));
         session.setItemMappings(Registries.ITEMS.forVersion(loginPacket.getProtocolVersion()));
