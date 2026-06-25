@@ -2,5 +2,5 @@ id: geyser-reversion
 name: GeyserReversion
 main: oxy.geyser.reversion.GeyserReversion
 api: 2.9.5
-version: 1.0.2
+version: 1.0.3
 authors: [oryxel]

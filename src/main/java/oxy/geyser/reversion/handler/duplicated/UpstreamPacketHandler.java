@@ -74,6 +74,7 @@ import org.geysermc.geyser.text.GeyserLocale;
 import org.geysermc.geyser.util.LoginEncryptionUtils;
 import org.geysermc.geyser.util.MathUtils;
 import org.geysermc.geyser.util.VersionCheckUtils;
+import oxy.geyser.reversion.util.SessionManagerUtil;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -200,7 +201,7 @@ public class UpstreamPacketHandler extends LoggingPacketHandler {
         }
         receivedLoginPacket = true;
 
-        if (geyser.getSessionManager().reachedMaxConnectionsPerAddress(session)) {
+        if (SessionManagerUtil.reachedMaxConnectionsPerAddress(geyser.getSessionManager(), session)) {
             session.disconnect("Too many connections are originating from this location!");
             return PacketSignal.HANDLED;
         }

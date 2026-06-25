@@ -29,6 +29,7 @@ import oxy.geyser.reversion.handler.duplicated.UpstreamPacketHandler;
 import oxy.geyser.reversion.session.GeyserTranslatedUser;
 import oxy.geyser.reversion.util.ClientDataUtil;
 import oxy.geyser.reversion.util.GeyserUtil;
+import oxy.geyser.reversion.util.SessionManagerUtil;
 
 
 import java.util.List;
@@ -105,7 +106,7 @@ public final class TranslatorPacketHandler extends UpstreamPacketHandler {
                 return PacketSignal.HANDLED;
             }
 
-            if (geyser.getSessionManager().reachedMaxConnectionsPerAddress(session)) {
+            if (SessionManagerUtil.reachedMaxConnectionsPerAddress(geyser.getSessionManager(), session)) {
                 session.disconnect("Too many connections are originating from this location!");
                 return PacketSignal.HANDLED;
             }
