@@ -14,6 +14,7 @@ import org.cloudburstmc.protocol.bedrock.packet.*;
 import org.cloudburstmc.protocol.common.PacketSignal;
 import org.geysermc.geyser.GeyserImpl;
 
+import org.geysermc.geyser.api.event.bedrock.SessionInitializeEvent;
 import org.geysermc.geyser.event.type.SessionLoadResourcePacksEventImpl;
 import org.geysermc.geyser.network.GameProtocol;
 import org.geysermc.geyser.registry.BlockRegistries;
@@ -97,12 +98,24 @@ public final class TranslatorPacketHandler extends UpstreamPacketHandler {
             session.setBlockMappings(BlockRegistries.BLOCKS.forVersion(packet.getProtocolVersion()));
             session.setItemMappings(Registries.ITEMS.forVersion(packet.getProtocolVersion()));
 
-            // Call this just to set the client data lol...
+            // Populate client/auth data before continuing with the legacy login path.
             ClientDataUtil.setClientData(session, packet);
 
             if (session.isClosed()) {
                 return PacketSignal.HANDLED;
             }
+
+            if (geyser.getSessionManager().reachedMaxConnectionsPerAddress(session)) {
+                session.disconnect("Too many connections are originating from this location!");
+                return PacketSignal.HANDLED;
+            }
+
+            if (geyser.getSessionManager().isXuidAlreadyPending(session.xuid()) || geyser.getSessionManager().sessionByXuid(session.xuid()) != null) {
+                session.disconnect(GeyserLocale.getLocaleStringLog("geyser.auth.already_loggedin", session.bedrockUsername()));
+                return PacketSignal.HANDLED;
+            }
+
+            geyser.eventBus().fire(new SessionInitializeEvent(session));
 
             PlayStatusPacket playStatus = new PlayStatusPacket();
             playStatus.setStatus(PlayStatusPacket.Status.LOGIN_SUCCESS);
@@ -114,13 +127,15 @@ public final class TranslatorPacketHandler extends UpstreamPacketHandler {
                 // Can happen if an error occurs in the resource pack event; that'll disconnect the player
                 return PacketSignal.HANDLED;
             }
+            session.integratedPackActive(resourcePackLoadEvent.isIntegratedPackActive());
 
             // Let's just send player stuff, don't spawn them in yet....
             ResourcePacksInfoPacket resourcePacksInfo = new ResourcePacksInfoPacket();
             resourcePacksInfo.getResourcePackInfos().addAll(this.resourcePackLoadEvent.infoPacketEntries());
             resourcePacksInfo.setVibrantVisualsForceDisabled(!session.isAllowVibrantVisuals());
 
-            resourcePacksInfo.setForcedToAccept(GeyserImpl.getInstance().config().gameplay().forceResourcePacks());
+            resourcePacksInfo.setForcedToAccept(GeyserImpl.getInstance().config().gameplay().forceResourcePacks()
+                    || resourcePackLoadEvent.isIntegratedPackActive());
             resourcePacksInfo.setWorldTemplateId(UUID.randomUUID());
             resourcePacksInfo.setWorldTemplateVersion("*");
             session.sendUpstreamPacket(resourcePacksInfo);

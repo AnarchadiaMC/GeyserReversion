@@ -15,6 +15,8 @@ import org.geysermc.geyser.session.GeyserSession;
 import oxy.geyser.reversion.DuplicatedProtocolInfo;
 import oxy.geyser.reversion.GeyserReversion;
 
+import java.util.Objects;
+
 @Getter @Setter
 public class GeyserTranslatedUser extends SpecialOuranosSession {
     private final GeyserSession session;
@@ -28,16 +30,23 @@ public class GeyserTranslatedUser extends SpecialOuranosSession {
     private boolean authenticated;
 
     public void setAuthenticated(boolean authenticated) {
+        if (this.authenticated == authenticated) {
+            return;
+        }
         this.authenticated = authenticated;
-        GeyserReversion.LOGGER.info("Player with username " + session.getAuthData().name() + " joined using Minecraft version " + this.cloudburstClientCodec.getMinecraftVersion() + "!");
+        if (authenticated) {
+            GeyserReversion.LOGGER.info("Player with username " + session.getAuthData().name() + " joined using Minecraft version " + this.cloudburstClientCodec.getMinecraftVersion() + "!");
+        }
     }
 
     public GeyserTranslatedUser(int protocolVersion, int serverVersion, GeyserSession session) {
         super(protocolVersion, serverVersion);
         this.session = session;
 
-        this.cloudburstClientCodec = DuplicatedProtocolInfo.getPacketCodec(protocolVersion);
-        this.cloudburstServerCodec = DuplicatedProtocolInfo.getPacketCodec(serverVersion);
+        this.cloudburstClientCodec = Objects.requireNonNull(DuplicatedProtocolInfo.getPacketCodec(protocolVersion),
+                "Unsupported client Bedrock protocol: " + protocolVersion);
+        this.cloudburstServerCodec = Objects.requireNonNull(DuplicatedProtocolInfo.getPacketCodec(serverVersion),
+                "Unsupported bridge Bedrock protocol: " + serverVersion);
 
         this.cloudburstClientCodecHelper = this.cloudburstClientCodec.createHelper();
         this.cloudburstServerCodecHelper = this.cloudburstServerCodec.createHelper();
@@ -65,7 +74,10 @@ public class GeyserTranslatedUser extends SpecialOuranosSession {
 
             this.encodeClient(bedrockPacket, input);
             packet = this.decodeClient(input, this.getClientCodec().getPacketDefinition(bedrockPacket.getClass()).getId());
-        }  catch (Exception ignored) {
+        } catch (Exception e) {
+            if (GeyserReversion.CONFIG.debugMode()) {
+                GeyserReversion.LOGGER.severe("Failed to convert upstream Ouranos packet " + bedrockPacket.getPacketType(), e);
+            }
         } finally {
             input.release();
         }
@@ -86,7 +98,10 @@ public class GeyserTranslatedUser extends SpecialOuranosSession {
 
             this.encodeServer(bedrockPacket, input);
             packet = this.decodeServer(input, this.getClientCodec().getPacketDefinition(bedrockPacket.getClass()).getId());
-        }  catch (Exception ignored) {
+        } catch (Exception e) {
+            if (GeyserReversion.CONFIG.debugMode()) {
+                GeyserReversion.LOGGER.severe("Failed to convert downstream Ouranos packet " + bedrockPacket.getPacketType(), e);
+            }
         } finally {
             input.release();
         }

@@ -16,8 +16,7 @@ import org.cloudburstmc.netty.channel.raknet.config.RakChannelOption;
 import org.cloudburstmc.netty.handler.codec.raknet.server.RakServerOfflineHandler;
 import org.cloudburstmc.netty.handler.codec.raknet.server.RakServerRateLimiter;
 import org.cloudburstmc.protocol.bedrock.codec.BedrockCodec;
-import org.cloudburstmc.protocol.bedrock.codec.v818.Bedrock_v818;
-import org.cloudburstmc.protocol.bedrock.codec.v844.Bedrock_v844;
+import org.cloudburstmc.protocol.bedrock.codec.v898.Bedrock_v898;
 import org.geysermc.event.subscribe.Subscribe;
 import org.geysermc.geyser.GeyserImpl;
 import org.geysermc.geyser.api.event.lifecycle.GeyserPostInitializeEvent;
@@ -51,7 +50,7 @@ public class GeyserReversion implements Extension {
 
     public static ExtensionLogger LOGGER;
 
-    public static BedrockCodec BRIDGE_GEYSER_CODEC = CodecUtil.rebuildCodec(Bedrock_v844.CODEC);
+    public static BedrockCodec BRIDGE_GEYSER_CODEC = CodecUtil.rebuildCodec(Bedrock_v898.CODEC);
 
     private static final TransportHelper.TransportType TRANSPORT = TransportHelper.TRANSPORT_TYPE;
 
@@ -80,7 +79,6 @@ public class GeyserReversion implements Extension {
 //        }
     }
 
-    // Fucking hell.
     @SneakyThrows
     @Subscribe
     public void onGeyserPostInitializeEvent(GeyserPostInitializeEvent event) {
@@ -90,7 +88,7 @@ public class GeyserReversion implements Extension {
         BRIDGE_GEYSER_CODEC = resolveBridgeCodec();
         LOGGER.info("Using Bedrock bridge codec " + BRIDGE_GEYSER_CODEC.getMinecraftVersion()
                 + " (" + BRIDGE_GEYSER_CODEC.getProtocolVersion() + ") for translated clients.");
-        // We have to kill off the server then restart again :D to use our packet handler...
+        // Restart Geyser's Bedrock listener so translated sessions use our packet handler.
         geyser.getGeyserServer().shutdown();
 
         Integer bedrockThreadCount = Integer.getInteger("Geyser.BedrockNetworkThreads");
@@ -203,14 +201,9 @@ public class GeyserReversion implements Extension {
             return sharedCodec;
         }
 
-        BedrockCodec fallbackCodec = DuplicatedProtocolInfo.getPacketCodecs().stream()
-                .max(Comparator.comparingInt(BedrockCodec::getProtocolVersion))
-                .orElseThrow(() -> new IllegalStateException("GeyserReversion has no Bedrock codecs available."));
-        LOGGER.warning("No shared Bedrock codec found between Geyser (" + GameProtocol.getAllSupportedBedrockVersions()
-                + ") and GeyserReversion. Falling back to local bridge codec "
-                + fallbackCodec.getMinecraftVersion() + " (" + fallbackCodec.getProtocolVersion()
-                + ") to keep translated clients enabled.");
-        return fallbackCodec;
+        throw new IllegalStateException("No shared Bedrock bridge codec found between Geyser ("
+                + GameProtocol.getAllSupportedBedrockVersions()
+                + ") and GeyserReversion. Update Ouranos/GeyserReversion codec support before enabling this extension.");
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})

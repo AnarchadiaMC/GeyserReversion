@@ -3,6 +3,7 @@ package oxy.geyser.reversion.util;
 import org.cloudburstmc.protocol.bedrock.BedrockServerSession;
 import org.geysermc.geyser.session.GeyserSession;
 import org.geysermc.geyser.session.UpstreamSession;
+import oxy.geyser.reversion.GeyserReversion;
 import oxy.geyser.reversion.handler.TranslatorPacketHandler;
 import oxy.geyser.reversion.handler.TranslatorSendListener;
 
@@ -12,7 +13,10 @@ public class GeyserUtil {
     public static void hook(final GeyserSession session) {
         try {
             injectCloudburstUpstream(session, findCloudburstSession(session));
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            if (GeyserReversion.CONFIG.debugMode()) {
+                GeyserReversion.LOGGER.severe("Failed to hook translated upstream session", e);
+            }
             session.disconnect("Failed to hook into cloudburst session!");
         }
     }

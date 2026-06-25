@@ -200,14 +200,16 @@ public class UpstreamPacketHandler extends LoggingPacketHandler {
         }
         receivedLoginPacket = true;
 
-        // Set the block translation based off of version
-        session.setBlockMappings(BlockRegistries.BLOCKS.forVersion(loginPacket.getProtocolVersion()));
-        session.setItemMappings(Registries.ITEMS.forVersion(loginPacket.getProtocolVersion()));
+        if (geyser.getSessionManager().reachedMaxConnectionsPerAddress(session)) {
+            session.disconnect("Too many connections are originating from this location!");
+            return PacketSignal.HANDLED;
+        }
 
         LoginEncryptionUtils.encryptPlayerConnection(session, loginPacket);
 
         if (session.isClosed()) {
             // Can happen if Xbox validation fails
+            session.forciblyCloseUpstream();
             return PacketSignal.HANDLED;
         }
 
@@ -215,6 +217,10 @@ public class UpstreamPacketHandler extends LoggingPacketHandler {
             session.disconnect(GeyserLocale.getLocaleStringLog("geyser.auth.already_loggedin", session.bedrockUsername()));
             return PacketSignal.HANDLED;
         }
+
+        // Set the block translation based off of version
+        session.setBlockMappings(BlockRegistries.BLOCKS.forVersion(loginPacket.getProtocolVersion()));
+        session.setItemMappings(Registries.ITEMS.forVersion(loginPacket.getProtocolVersion()));
 
         geyser.getSessionManager().addPendingSession(session);
 
@@ -272,14 +278,12 @@ public class UpstreamPacketHandler extends LoggingPacketHandler {
                         " (" + session.protocolVersion() + ")"));
             }
             case SEND_PACKS -> {
-                if (packet.getPackIds().isEmpty()) {
-                    GeyserImpl.getInstance().getLogger().warning("Received empty pack ids in resource pack response packet!");
-                    session.disconnect("Invalid resource pack response packet received!");
-                    chunkRequestQueue.clear();
+                // Some Bedrock clients send an empty SEND_PACKS response; Geyser ignores it.
+                if (!packet.getPackIds().isEmpty()) {
+                    packsToSend.addAll(packet.getPackIds());
+                    sendPackDataInfo(packsToSend.pop());
                     return PacketSignal.HANDLED;
                 }
-                packsToSend.addAll(packet.getPackIds());
-                sendPackDataInfo(packsToSend.pop());
             }
             case HAVE_ALL_PACKS -> {
                 ResourcePackStackPacket stackPacket = new ResourcePackStackPacket();
