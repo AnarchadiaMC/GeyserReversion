@@ -30,6 +30,8 @@ import org.geysermc.geyser.network.netty.GeyserServer;
 import org.geysermc.geyser.network.netty.handler.RakConnectionRequestHandler;
 import org.geysermc.geyser.network.netty.handler.RakPingHandler;
 import org.geysermc.geyser.network.netty.proxy.ProxyServerHandler;
+import org.geysermc.geyser.registry.BlockRegistries;
+import org.geysermc.geyser.registry.Registries;
 import org.geysermc.mcprotocollib.network.helper.TransportHelper;
 import oxy.geyser.reversion.config.Config;
 import oxy.geyser.reversion.config.ConfigLoader;
@@ -86,6 +88,7 @@ public class GeyserReversion implements Extension {
 
         final GeyserImpl geyser = GeyserImpl.getInstance();
         BRIDGE_GEYSER_CODEC = resolveBridgeCodec();
+        registerBridgeMappings(BRIDGE_GEYSER_CODEC);
         LOGGER.info("Using Bedrock bridge codec " + BRIDGE_GEYSER_CODEC.getMinecraftVersion()
                 + " (" + BRIDGE_GEYSER_CODEC.getProtocolVersion() + ") for translated clients.");
         // Restart Geyser's Bedrock listener so translated sessions use our packet handler.
@@ -201,9 +204,33 @@ public class GeyserReversion implements Extension {
             return sharedCodec;
         }
 
-        throw new IllegalStateException("No shared Bedrock bridge codec found between Geyser ("
+        BedrockCodec fallbackCodec = DuplicatedProtocolInfo.getPacketCodecs().stream()
+                .max(Comparator.comparingInt(BedrockCodec::getProtocolVersion))
+                .orElseThrow(() -> new IllegalStateException("GeyserReversion has no Bedrock codecs available."));
+        LOGGER.warning("No shared Bedrock bridge codec found between Geyser ("
                 + GameProtocol.getAllSupportedBedrockVersions()
-                + ") and GeyserReversion. Update Ouranos/GeyserReversion codec support before enabling this extension.");
+                + ") and GeyserReversion. Falling back to local bridge codec "
+                + fallbackCodec.getMinecraftVersion() + " (" + fallbackCodec.getProtocolVersion()
+                + ") with current Geyser block/item mappings.");
+        return fallbackCodec;
+    }
+
+    private void registerBridgeMappings(BedrockCodec bridgeCodec) {
+        int bridgeProtocol = bridgeCodec.getProtocolVersion();
+        if (GameProtocol.getBedrockCodec(bridgeProtocol) != null) {
+            return;
+        }
+
+        int geyserProtocol = GameProtocol.DEFAULT_BEDROCK_PROTOCOL;
+        try {
+            BlockRegistries.BLOCKS.register(bridgeProtocol, BlockRegistries.BLOCKS.forVersion(geyserProtocol));
+            Registries.ITEMS.register(bridgeProtocol, Registries.ITEMS.forVersion(geyserProtocol));
+            LOGGER.warning("Registered compatibility mappings for unsupported bridge protocol "
+                    + bridgeProtocol + " using Geyser protocol " + geyserProtocol + ".");
+        } catch (Exception e) {
+            throw new IllegalStateException("Unable to register compatibility mappings for bridge protocol "
+                    + bridgeProtocol + " using Geyser protocol " + geyserProtocol + ".", e);
+        }
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})
