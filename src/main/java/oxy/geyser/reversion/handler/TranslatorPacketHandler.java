@@ -27,9 +27,8 @@ import oxy.geyser.reversion.DuplicatedProtocolInfo;
 import oxy.geyser.reversion.GeyserReversion;
 import oxy.geyser.reversion.handler.duplicated.UpstreamPacketHandler;
 import oxy.geyser.reversion.session.GeyserTranslatedUser;
-import oxy.geyser.reversion.util.ClientDataUtil;
 import oxy.geyser.reversion.util.GeyserUtil;
-import oxy.geyser.reversion.util.SessionManagerUtil;
+import org.geysermc.geyser.util.LoginEncryptionUtils;
 
 
 import java.util.List;
@@ -99,15 +98,10 @@ public final class TranslatorPacketHandler extends UpstreamPacketHandler {
             session.setBlockMappings(BlockRegistries.BLOCKS.forVersion(packet.getProtocolVersion()));
             session.setItemMappings(Registries.ITEMS.forVersion(packet.getProtocolVersion()));
 
-            // Populate client/auth data before continuing with the legacy login path.
-            ClientDataUtil.setClientData(session, packet);
+            LoginEncryptionUtils.encryptPlayerConnection(session, packet);
 
             if (session.isClosed()) {
-                return PacketSignal.HANDLED;
-            }
-
-            if (SessionManagerUtil.reachedMaxConnectionsPerAddress(geyser.getSessionManager(), session)) {
-                session.disconnect("Too many connections are originating from this location!");
+                session.forciblyCloseUpstream();
                 return PacketSignal.HANDLED;
             }
 
@@ -116,6 +110,7 @@ public final class TranslatorPacketHandler extends UpstreamPacketHandler {
                 return PacketSignal.HANDLED;
             }
 
+            geyser.getSessionManager().addPendingSession(session);
             geyser.eventBus().fire(new SessionInitializeEvent(session));
 
             PlayStatusPacket playStatus = new PlayStatusPacket();
@@ -137,8 +132,8 @@ public final class TranslatorPacketHandler extends UpstreamPacketHandler {
 
             resourcePacksInfo.setForcedToAccept(GeyserImpl.getInstance().config().gameplay().forceResourcePacks()
                     || resourcePackLoadEvent.isIntegratedPackActive());
-            resourcePacksInfo.setWorldTemplateId(UUID.randomUUID());
-            resourcePacksInfo.setWorldTemplateVersion("*");
+            resourcePacksInfo.setWorldTemplateId(new UUID(0, 0));
+            resourcePacksInfo.setWorldTemplateVersion("");
             session.sendUpstreamPacket(resourcePacksInfo);
 
             GeyserLocale.loadGeyserLocale(session.locale());
