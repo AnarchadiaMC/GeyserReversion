@@ -1,3 +1,9 @@
+<!-- DOWNLOAD_BADGES_START -->
+<p align="center">
+  <a href="https://gitlab.com/siberanka/GeyserReversion-AIRemake/-/releases/permalink/latest/downloads/plugin.jar"><img alt="Download Geyser Extension" src="https://img.shields.io/badge/Download-Geyser%20Extension-00bfa5?logo=gitlab&logoColor=white"></a>
+</p>
+<!-- DOWNLOAD_BADGES_END -->
+
 # GeyserReversion
 - Inspired by https://github.com/bundabrg/GeyserReversion, entirely different codebase tho uhhh
 - The "library" used for translating stuff is a fork of [Ouranos](https://github.com/Blackjack200/Ouranos) aka https://github.com/oryxel1/Ouranos 
