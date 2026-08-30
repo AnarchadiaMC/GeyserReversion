@@ -51,6 +51,7 @@ import org.cloudburstmc.protocol.bedrock.codec.v818.Bedrock_v818;
 import org.cloudburstmc.protocol.bedrock.codec.v819.Bedrock_v819;
 import org.cloudburstmc.protocol.bedrock.codec.v827.Bedrock_v827;
 import org.cloudburstmc.protocol.bedrock.codec.v844.Bedrock_v844;
+import org.cloudburstmc.protocol.bedrock.codec.v898.Bedrock_v898;
 import org.cloudburstmc.protocol.bedrock.data.EncodingSettings;
 
 import java.util.Collections;
@@ -73,7 +74,7 @@ public class DuplicatedProtocolInfo {
 
     public static void addPacketCodec(BedrockCodec packetCodec) {
         BedrockCodecHelper helper = packetCodec.createHelper();
-        helper.setEncodingSettings(EncodingSettings.builder().maxListSize(Integer.MAX_VALUE).maxByteArraySize(Integer.MAX_VALUE).maxNetworkNBTSize(Integer.MAX_VALUE).maxItemNBTSize(Integer.MAX_VALUE).maxStringLength(Integer.MAX_VALUE).build());
+        helper.setEncodingSettings(EncodingSettings.SERVER);
         PACKET_CODECS.add(packetCodec.toBuilder().helper(() -> helper).build());
     }
 
@@ -82,7 +83,8 @@ public class DuplicatedProtocolInfo {
     }
 
     static {
-        // 1.21-1.21.111
+        // 1.21-1.21.132
+        addPacketCodec(Bedrock_v898.CODEC);
         addPacketCodec(Bedrock_v844.CODEC);
         addPacketCodec(Bedrock_v827.CODEC);
         addPacketCodec(Bedrock_v819.CODEC);
