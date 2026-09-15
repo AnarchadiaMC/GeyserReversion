@@ -31,8 +31,6 @@ import org.geysermc.geyser.network.netty.Bootstraps;
 import org.geysermc.geyser.network.netty.GeyserServer;
 import org.geysermc.geyser.network.netty.handler.RakConnectionRequestHandler;
 import org.geysermc.geyser.network.netty.handler.RakPingHandler;
-import org.geysermc.geyser.registry.BlockRegistries;
-import org.geysermc.geyser.registry.Registries;
 import org.geysermc.mcprotocollib.network.helper.TransportHelper;
 import oxy.geyser.reversion.config.Config;
 import oxy.geyser.reversion.config.ConfigLoader;
@@ -44,7 +42,6 @@ import oxy.geyser.reversion.util.GeyserExtensionClassProvider;
 
 import java.lang.reflect.Field;
 import java.net.InetSocketAddress;
-import java.util.Comparator;
 
 import static org.cloudburstmc.netty.channel.raknet.RakConstants.DEFAULT_GLOBAL_PACKET_LIMIT;
 import static org.cloudburstmc.netty.channel.raknet.RakConstants.DEFAULT_PACKET_LIMIT;
@@ -89,7 +86,10 @@ public class GeyserReversion implements Extension {
 
         final GeyserImpl geyser = GeyserImpl.getInstance();
         BRIDGE_GEYSER_CODEC = resolveBridgeCodec();
-        registerBridgeMappings(BRIDGE_GEYSER_CODEC);
+        int verifiedItems = oxy.geyser.reversion.util.BridgeMappingAudit.verifyItems(BRIDGE_GEYSER_CODEC.getProtocolVersion());
+        LOGGER.info("Verified " + verifiedItems + " vanilla bridge item runtime IDs against Geyser mappings.");
+        int verifiedBlocks = oxy.geyser.reversion.util.BridgeMappingAudit.verifyBlocks(BRIDGE_GEYSER_CODEC.getProtocolVersion());
+        LOGGER.info("Verified " + verifiedBlocks + " bridge block runtime states against Geyser mappings.");
         LOGGER.info("Using Bedrock bridge codec " + BRIDGE_GEYSER_CODEC.getMinecraftVersion()
                 + " (" + BRIDGE_GEYSER_CODEC.getProtocolVersion() + ") for translated clients.");
         // Restart Geyser's Bedrock listener so translated sessions use our packet handler.
@@ -195,41 +195,8 @@ public class GeyserReversion implements Extension {
     }
 
     private BedrockCodec resolveBridgeCodec() {
-        BedrockCodec sharedCodec = DuplicatedProtocolInfo.getPacketCodecs().stream()
-                .filter(codec -> GameProtocol.getBedrockCodec(codec.getProtocolVersion()) != null)
-                .max(Comparator.comparingInt(BedrockCodec::getProtocolVersion))
-                .orElse(null);
-        if (sharedCodec != null) {
-            return sharedCodec;
-        }
-
-        BedrockCodec fallbackCodec = DuplicatedProtocolInfo.getPacketCodecs().stream()
-                .max(Comparator.comparingInt(BedrockCodec::getProtocolVersion))
-                .orElseThrow(() -> new IllegalStateException("GeyserReversion has no Bedrock codecs available."));
-        LOGGER.warning("No shared Bedrock bridge codec found between Geyser ("
-                + GameProtocol.getAllSupportedBedrockVersions()
-                + ") and GeyserReversion. Falling back to local bridge codec "
-                + fallbackCodec.getMinecraftVersion() + " (" + fallbackCodec.getProtocolVersion()
-                + ") with current Geyser block/item mappings.");
-        return fallbackCodec;
-    }
-
-    private void registerBridgeMappings(BedrockCodec bridgeCodec) {
-        int bridgeProtocol = bridgeCodec.getProtocolVersion();
-        if (GameProtocol.getBedrockCodec(bridgeProtocol) != null) {
-            return;
-        }
-
-        int geyserProtocol = GameProtocol.DEFAULT_BEDROCK_PROTOCOL;
-        try {
-            BlockRegistries.BLOCKS.register(bridgeProtocol, BlockRegistries.BLOCKS.forVersion(geyserProtocol));
-            Registries.ITEMS.register(bridgeProtocol, Registries.ITEMS.forVersion(geyserProtocol));
-            LOGGER.warning("Registered compatibility mappings for unsupported bridge protocol "
-                    + bridgeProtocol + " using Geyser protocol " + geyserProtocol + ".");
-        } catch (Exception e) {
-            throw new IllegalStateException("Unable to register compatibility mappings for bridge protocol "
-                    + bridgeProtocol + " using Geyser protocol " + geyserProtocol + ".", e);
-        }
+        return oxy.geyser.reversion.util.BridgeCodecSelector.select(
+                DuplicatedProtocolInfo.getPacketCodecs(), protocol -> GameProtocol.getBedrockCodec(protocol) != null);
     }
 
 }

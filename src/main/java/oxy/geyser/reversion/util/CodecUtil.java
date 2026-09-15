@@ -6,8 +6,10 @@ import org.cloudburstmc.protocol.bedrock.data.EncodingSettings;
 
 public class CodecUtil {
     public static BedrockCodec rebuildCodec(BedrockCodec codec) {
-        BedrockCodecHelper helper = codec.createHelper();
-        helper.setEncodingSettings(EncodingSettings.SERVER);
-        return codec.toBuilder().helper(() -> helper).build();
+        return codec.toBuilder().helper(() -> {
+            BedrockCodecHelper helper = codec.createHelper();
+            helper.setEncodingSettings(EncodingSettings.SERVER);
+            return helper;
+        }).build();
     }
 }

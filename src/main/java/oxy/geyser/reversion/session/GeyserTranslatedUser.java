@@ -97,7 +97,7 @@ public class GeyserTranslatedUser extends SpecialOuranosSession {
         try {
 
             this.encodeServer(bedrockPacket, input);
-            packet = this.decodeServer(input, this.getClientCodec().getPacketDefinition(bedrockPacket.getClass()).getId());
+            packet = this.decodeServer(input, this.getServerCodec().getPacketDefinition(bedrockPacket.getClass()).getId());
         } catch (Exception e) {
             if (GeyserReversion.CONFIG.debugMode()) {
                 GeyserReversion.LOGGER.severe("Failed to convert downstream Ouranos packet " + bedrockPacket.getPacketType(), e);
