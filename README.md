@@ -27,28 +27,34 @@ tests. Critical translation failures now produce visible diagnostics.
 
 ## Local build and verification
 
+Use Java 21. Ouranos and its BedrockData resources are vendored in-tree, so no
+submodule initialization is required.
+
 ```powershell
-$env:JAVA_HOME = 'F:\vds\Java\jdk-21.0.9+10'
-git submodule update --init --recursive
 .\gradlew.bat clean test shadowJar sourceRelease --no-daemon
 ```
 
-The build applies reviewed patches to an isolated `build/ouranos-src/` copy;
-it does not edit the Ouranos submodule. Test execution needs up to 3 GB of heap
-for the exhaustive palette matrix. No CI, GitHub Actions or GitLab runners are
-required. For live loopback negotiation, start the local Geyser instance and
-run tests with `-PintegrationPort=<local-port>`; see the validation report.
+The root `buildOuranos` task builds the vendored `Ouranos/` Gradle project
+directly into `Ouranos/build/libs/ouranos-1.0-all.jar`. Test execution needs up
+to 3 GB of heap for the exhaustive palette matrix. No CI, GitHub Actions or
+GitLab runners are required. For live loopback negotiation, start the local
+Geyser instance and run tests with `-PintegrationPort=<local-port>`; see the
+validation report.
 
 Download both the plugin and matching `corresponding-source` release asset.
-The source archive expands nested submodules and includes exact dependency
-source JARs. Unlike platform-generated source ZIPs, it can build without a
-`.git` directory.
+The source archive includes the vendored Ouranos sources/data and exact
+dependency source JARs. Unlike platform-generated source ZIPs, it can build
+without a `.git` directory.
 
 ## License and authors
 
 GeyserReversion retains GPL-3.0; bundled Ouranos retains AGPL-3.0 and its network
 source-offer requirements. Server operators must prominently offer users the
 matching free source link, including their own modifications.
+
+Ouranos is vendored in-tree with its history preserved from oryxel1/Ouranos
+commit `e927ea4`, together with BedrockData `5b9a844`; local compatibility
+changes are applied in-tree.
 
 Original work: **oxy / oryxel1**, **AnarchadiaMC**, **Blackjack200** and their
 contributors. Copied GeyserMC and ViaProxy notices remain intact. Inspired by

@@ -9,7 +9,7 @@ this fork does not claim original authorship or impose additional restrictions.
 | --- | --- | --- |
 | GeyserReversion | oxy / oryxel1; AnarchadiaMC fork and contributors | GPL-3.0, root `LICENSE` |
 | Ouranos translation engine | Blackjack200; oryxel1 fork and contributors | AGPL-3.0, `Ouranos/LICENSE` |
-| Ouranos compatibility patch and RecipeTranslator | siberanka; based on Ouranos | AGPL-3.0, `patches/ouranos-compat.patch`, `patches/ouranos-src/` |
+| Ouranos compatibility changes and RecipeTranslator | siberanka; based on Ouranos | AGPL-3.0, applied in-tree under `Ouranos/` |
 | Copied Geyser packet handlers/initializer | Copyright 2019-2022 GeyserMC; current adaptations remain attributed | MIT, full notices in copied Java headers and `META-INF/licenses/Geyser-MIT.txt` |
 | ClassLoaderPriorityUtil adaptation | Copyright 2021-2025 RK_01 / RaphiMC and ViaProxy contributors | GPL-3.0-or-later, full source notice retained |
 | BedrockData resource collection | IdotClub/BedrockData and original data contributors | LGPL-2.1 collection; per-version CC0 notices in `Ouranos/src/main/resources/vanilla/` take precedence for those data sets |
@@ -32,9 +32,8 @@ free corresponding-source link (including any operator modifications).
 Source for each release is available alongside the JAR on both
 [GitLab](https://gitlab.com/siberanka/GeyserReversion-AIRemake/-/releases) and
 [GitHub](https://github.com/siberanka/GeyserReversion-AIRemake/releases).
-Use the `corresponding-source` asset: platform-generated archives do not expand
-Git submodules. The asset includes the Ouranos sources/data, root sources,
-compatibility patches and build scripts. Its build needs Java 21 and Internet
+Use the `corresponding-source` asset: the vendored Ouranos sources/data, root
+sources and build scripts are included in the archive. Its build needs Java 21 and Internet
 access to the Maven repositories declared in the build scripts. Dependencies
 remain available under their own licenses and the source links above.
 The `dependency-sources/` directory also contains exact-version source JARs
@@ -42,10 +41,12 @@ for the bundled StateUpdater libraries (LGPL-3.0) and Cloudburst Protocol.
 Root/Ouranos build scripts can be adapted to relink modified dependencies;
 there is no signature/installation restriction preventing such modifications.
 
-Provenance: Ouranos upstream `e927ea497cae5a739acbf5d91f81024bf79738f0`,
-BedrockData `5b9a844b20950395fcd2930f76701e6731568198`. Previous fork fixes are
-preserved in root Git history; crafting preservation is carried forward as
-version-aware ingredient/result conversion instead of untranslated IDs.
+Provenance: Ouranos upstream `e927ea497cae5a739acbf5d91f81024bf79738f0` and
+BedrockData `5b9a844b20950395fcd2930f76701e6731568198` are vendored in-tree with
+their history preserved; local compatibility changes are applied in-tree.
+Previous fork fixes are preserved in root Git history; crafting preservation is
+carried forward as version-aware ingredient/result conversion instead of
+untranslated IDs.
 
 Inspiration only, not a claim of shared code: bundabrg/GeyserReversion.
 See `UPSTREAM_ATTRIBUTION.md` for the GeyserReversion fork lineage.

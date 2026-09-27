@@ -18,15 +18,6 @@ repositories {
     maven {url = "https://repo.opencollab.dev/main/"}
 }
 
-// Build a disposable patched copy: never mutate the user's submodule during a build.
-tasks.register('prepareOuranos', Sync) {
-    from('Ouranos') {
-        exclude '.git', '**/.git', '.gradle/**', 'build/**', '**/.github/**'
-    }
-    into layout.buildDirectory.dir('ouranos-src')
-    outputs.upToDateWhen { false }
-}
-
 configurations {
     correspondingDependencySources {
         canBeConsumed = false
@@ -34,23 +25,9 @@ configurations {
     }
 }
 
+// Ouranos is vendored in-tree; build its nested Gradle project directly.
 tasks.register('buildOuranos', Exec) {
-    dependsOn 'prepareOuranos'
-    workingDir layout.buildDirectory.dir('ouranos-src')
-    doFirst {
-        exec {
-            workingDir projectDir
-            commandLine 'git', 'apply', '--check', '--directory=build/ouranos-src', file('patches/ouranos-compat.patch').absolutePath
-        }
-        exec {
-            workingDir projectDir
-            commandLine 'git', 'apply', '--directory=build/ouranos-src', file('patches/ouranos-compat.patch').absolutePath
-        }
-        copy {
-            from 'patches/ouranos-src'
-            into layout.buildDirectory.dir('ouranos-src/src/main/java')
-        }
-    }
+    workingDir 'Ouranos'
     if (System.getProperty('os.name').toLowerCase().contains('windows')) {
         commandLine 'cmd', '/c', 'gradlew.bat', 'clean', 'shadowJar', '--no-daemon'
     } else {
@@ -76,8 +53,8 @@ dependencies {
     compileOnly("org.projectlombok:lombok:1.18.36")
     annotationProcessor("org.projectlombok:lombok:1.18.36")
 
-    // Use Ouranos shadowJar from submodule build output
-    implementation(files("build/ouranos-src/build/libs/ouranos-1.0-all.jar"))
+    // Use the in-tree Ouranos shadowJar built by buildOuranos.
+    implementation(files("Ouranos/build/libs/ouranos-1.0-all.jar"))
     testImplementation("org.geysermc.geyser:core:2.11.2-20260910.131131-9")
     testImplementation(platform("org.junit:junit-bom:5.11.4"))
     testImplementation("org.junit.jupiter:junit-jupiter")
@@ -93,7 +70,7 @@ dependencies {
 
 shadowJar {
     dependencies {
-        include(dependency(files("build/ouranos-src/build/libs/ouranos-1.0-all.jar")))
+        include(dependency(files("Ouranos/build/libs/ouranos-1.0-all.jar")))
         include(dependency("com.fasterxml.jackson.core:jackson-databind:2.17.0"))
         include(dependency("com.fasterxml.jackson.core:jackson-annotations:2.17.0"))
         include(dependency("com.fasterxml.jackson.core:jackson-core:2.17.0"))
@@ -125,7 +102,7 @@ modrinth {
     versionType = "alpha"
     uploadFile = shadowJar
     // Don't comment on this :)
-    gameVersions = ["1.8","1.8.1","1.8.2","1.8.3","1.8.4","1.8.5","1.8.6","1.8.7","1.8.8","1.8.9","1.9","1.9.1","1.9.2","1.9.3","1.9.4","1.10","1.10.1","1.10.2","1.11","1.11.1","1.11.2","1.12","1.12.1","1.12.2","1.13","1.13.1","1.13.2","1.14","1.14.1","1.14.2","1.14.3","1.14.4","1.15","1.15.1","1.15.2","1.16","1.16.1","1.16.2","1.16.3","1.16.4","1.16.5","1.17","1.17.1","1.18","1.18.1","1.18.2","1.19","1.19.1","1.19.2","1.19.3","1.19.4","1.20","1.20.1","1.20.2","1.20.3","1.20.4","1.20.5","1.20.6","1.21","1.21.1","1.21.2","1.21.3","1.21.4","1.21.5","1.21.6","1.21.7","1.21.8","1.21.9","1.21.10","1.21.11","26.1.1","26.1.2","26.2"];
+    gameVersions = ["1.8","1.8.1","1.8.2","1.8.3","1.8.4","1.8.5","1.8.6","1.8.7","1.8.8","1.8.9","1.9","1.9.1","1.9.2","1.9.3","1.9.4","1.10","1.10.1","1.10.2","1.11","1.11.1","1.11.2","1.12","1.12.1","1.12.2","1.13","1.13.1","1.13.2","1.14","1.14.1","1.14.2","1.14.3","1.14.4","1.15","1.15.1","1.15.2","1.16","1.16.1","1.16.2","1.16.3","1.16.4","1.16.5","1.17","1.17.1","1.18","1.18.1","1.18.2","1.19","1.19.1","1.19.2","1.19.3","1.19.4","1.20","1.20.1","1.20.2","1.20.3","1.20.4","1.20.5","1.20.6","1.21","1.21.1","1.21.2","1.21.3","1.21.4","1.21.5","1.21.6","1.21.7","1.21.8","1.21.9","1.21.10","1.21.11"];
     loaders = ["geyser"]
 }
 
@@ -163,8 +140,8 @@ tasks.register('sourceRelease', Zip) {
     from(configurations.correspondingDependencySources) { into 'dependency-sources' }
     // Explicit allowlist: no .git history/config, IDE settings, credentials or server data.
     from(projectDir) {
-        include 'src/**', 'patches/**', 'docs/**', 'gradle/**', 'gradlew', 'gradlew.bat'
-        include 'build.gradle', 'settings.gradle', '.gitmodules', '.gitignore', 'LICENSE'
+        include 'src/**', 'docs/**', 'gradle/**', 'gradlew', 'gradlew.bat'
+        include 'build.gradle', 'settings.gradle', '.gitignore', '.gitattributes', 'LICENSE'
         include 'README.md', 'UPSTREAM_ATTRIBUTION.md', 'THIRD_PARTY_NOTICES.md'
     }
     from('Ouranos') {
@@ -177,25 +154,32 @@ tasks.register('sourceRelease', Zip) {
 }
 
 def getCommitMessage() {
-    if (!file('.git').exists()) return 'Build from corresponding source archive'
-    def stdout = new ByteArrayOutputStream()
-    exec {
-        commandLine 'git', 'log', '-1', '--pretty=%B'
-        standardOutput = stdout
+    try {
+        def stdout = new ByteArrayOutputStream()
+        exec {
+            commandLine 'git', 'log', '-1', '--pretty=%B'
+            standardOutput = stdout
+            errorOutput = new ByteArrayOutputStream()
+        }
+        def message = stdout.toString().trim()
+        return message.isEmpty() ? 'Build from corresponding source archive' : message
+    } catch (Exception ignored) {
+        return 'Build from corresponding source archive'
     }
-    return stdout.toString().trim()
 }
 
-// Thanks to https://gist.github.com/JonasGroeger/7620911 :tm:
+// Works with normal clones and git worktrees (`.git` may be a file or absent).
 def getCommitHash() {
-    if (!file('.git').exists()) return 'source'
-    def gitFolder = "$projectDir/.git/"
-    def takeFromHash = 7
-    def head = new File(gitFolder + "HEAD").text.split(":")
-    def isCommit = head.length == 1
-
-    if(isCommit) return head[0].trim().take(takeFromHash)
-
-    def refHead = new File(gitFolder + head[1].trim())
-    refHead.text.trim().take takeFromHash
+    try {
+        def stdout = new ByteArrayOutputStream()
+        exec {
+            commandLine 'git', 'rev-parse', '--short=7', 'HEAD'
+            standardOutput = stdout
+            errorOutput = new ByteArrayOutputStream()
+        }
+        def hash = stdout.toString().trim()
+        return hash.isEmpty() ? 'source' : hash
+    } catch (Exception ignored) {
+        return 'source'
+    }
 }
