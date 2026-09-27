@@ -107,7 +107,6 @@ public final class ProtocolInfo {
         addPacketCodec(Bedrock_v898.CODEC, 251);
         addPacketCodec(Bedrock_v860.CODEC, 251);
         addPacketCodec(Bedrock_v859.CODEC, 251);
-        addPacketCodec(Bedrock_v844.CODEC, 251);
 
         addPacketCodec(Bedrock_v844.CODEC, 241, new Protocol844to827(), null);
         addPacketCodec(Bedrock_v827.CODEC, 241);

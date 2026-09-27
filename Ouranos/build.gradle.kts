@@ -15,6 +15,14 @@ repositories {
     maven("https://jitpack.io")
 }
 
+configurations.configureEach {
+    resolutionStrategy {
+        force("org.cloudburstmc.protocol:bedrock-connection:3.0.0.Beta12-20260721.182844-30")
+        force("org.cloudburstmc.protocol:bedrock-codec:3.0.0.Beta12-20260721.182844-29")
+        force("org.cloudburstmc.protocol:common:3.0.0.Beta12-20260721.182844-30")
+    }
+}
+
 dependencies {
     api(libs.org.allaymc.stateupdater.common)
     api(libs.org.allaymc.stateupdater.block.updater)
@@ -36,9 +44,9 @@ tasks {
             include(dependency("org.allaymc.stateupdater:common:0.1.1"))
             include(dependency("org.allaymc.stateupdater:block-updater:1.21.110-R1"))
             include(dependency("cn.hutool:hutool-core:5.8.40"))
-            include(dependency("org.cloudburstmc.protocol:bedrock-codec:3.0.0.Beta12-SNAPSHOT"))
-            include(dependency("org.cloudburstmc.protocol:common:3.0.0.Beta12-SNAPSHOT"))
-            include(dependency("org.cloudburstmc.protocol:bedrock-connection:3.0.0.Beta12-SNAPSHOT"))
+            include(dependency("org.cloudburstmc.protocol:bedrock-codec:3.0.0.Beta12-20260721.182844-29"))
+            include(dependency("org.cloudburstmc.protocol:common:3.0.0.Beta12-20260721.182844-30"))
+            include(dependency("org.cloudburstmc.protocol:bedrock-connection:3.0.0.Beta12-20260721.182844-30"))
             include(dependency("org.cloudburstmc.fastutil:core:8.5.15"))
             include(dependency("org.cloudburstmc.fastutil.sets:object-sets:8.5.15"))
             include(dependency("org.cloudburstmc.fastutil.sets:long-sets:8.5.15"))

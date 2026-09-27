@@ -27,7 +27,11 @@ public class AbstractMapping {
     }
 
     protected static String lookupAvailableFile(String file, int protocolId) {
-        var exists = ProtocolInfo.getPacketCodecs().stream().filter(id -> ProtocolInfo.class.getClassLoader().getResource("vanilla/v" + id.getProtocolVersion() + "/" + file) != null).toList();
+        var exists = ProtocolInfo.getPacketCodecs().stream()
+                .filter(id -> id.getProtocolVersion() <= protocolId)
+                .filter(id -> ProtocolInfo.class.getClassLoader().getResource("vanilla/v" + id.getProtocolVersion() + "/" + file) != null)
+                .sorted(java.util.Comparator.comparingInt(org.cloudburstmc.protocol.bedrock.codec.BedrockCodec::getProtocolVersion))
+                .toList();
         String name = "vanilla/v" + protocolId + "/" + file;
         if (ProtocolInfo.class.getClassLoader().getResource(name) == null) {
             name = file;

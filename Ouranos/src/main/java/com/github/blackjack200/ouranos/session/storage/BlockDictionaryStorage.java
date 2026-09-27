@@ -27,7 +27,9 @@ public class BlockDictionaryStorage extends OuranosStorage {
             serverDictionary = BlockStateDictionary.getInstance(user.getTargetVersion());
             clientDictionary = BlockStateDictionary.getInstance(user.getProtocolId());
         } else {
-            serverDictionary = dict(BlockStateDictionary.getInstance(user.getTargetVersion()), properties);
+            serverDictionary = BlockStateDictionary.hasRuntimeDefinitions(user.getTargetVersion())
+                    ? BlockStateDictionary.getInstance(user.getTargetVersion())
+                    : dict(BlockStateDictionary.getInstance(user.getTargetVersion()), properties);
             clientDictionary = dict(BlockStateDictionary.getInstance(user.getProtocolId()), properties);
         }
     }

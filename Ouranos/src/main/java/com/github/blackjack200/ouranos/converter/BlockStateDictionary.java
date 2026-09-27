@@ -144,4 +144,20 @@ public final class BlockStateDictionary extends AbstractMapping {
     public static Dictionary getInstance(int protocol) {
         return entries.computeIfAbsent(protocol, Dictionary::load);
     }
+
+    private static final java.util.Set<Integer> runtimeDefinitions = ConcurrentHashMap.newKeySet();
+
+    public static boolean hasRuntimeDefinitions(int protocol) {
+        return runtimeDefinitions.contains(protocol);
+    }
+
+    public static void registerRuntimeStates(int protocol, List<NbtMap> states) {
+        var mapped = new Int2ObjectRBTreeMap<Dictionary.BlockEntry>();
+        for (var state : states) {
+            var hash = HashUtils.computeBlockStateHash(state);
+            mapped.put(mapped.size(), new Dictionary.BlockEntry(state.getString("name"), state, hash, hash));
+        }
+        entries.put(protocol, new Dictionary(mapped));
+        runtimeDefinitions.add(protocol);
+    }
 }

@@ -19,6 +19,30 @@ import java.util.Optional;
 public class GlobalItemTranslator extends ProtocolToProtocol {
     @Override
     protected void registerProtocol() {
+        this.registerServerbound(PlayerAuthInputPacket.class, wrapped -> {
+            final PlayerAuthInputPacket packet = (PlayerAuthInputPacket) wrapped.getPacket();
+            final var transaction = packet.getItemUseTransaction();
+            if (transaction != null) {
+                final InventoryTransactionPacket proxy = new InventoryTransactionPacket();
+                proxy.getActions().addAll(transaction.getActions());
+                proxy.setBlockDefinition(transaction.getBlockDefinition());
+                proxy.setItemInHand(transaction.getItemInHand());
+                translateBothWay(new WrappedBedrockPacket(wrapped.session(), wrapped.getInput(),
+                        wrapped.getOutput(), proxy, false));
+                transaction.getActions().clear();
+                transaction.getActions().addAll(proxy.getActions());
+                transaction.setBlockDefinition(proxy.getBlockDefinition());
+                transaction.setItemInHand(proxy.getItemInHand());
+            }
+            if (packet.getItemStackRequest() != null) {
+                final ItemStackRequestPacket requests = new ItemStackRequestPacket();
+                requests.getRequests().add(packet.getItemStackRequest());
+                this.passthroughServerbound(new WrappedBedrockPacket(wrapped.session(), wrapped.getInput(),
+                        wrapped.getOutput(), requests, false));
+                packet.setItemStackRequest(requests.getRequests().getFirst());
+            }
+        });
+
         this.registerServerbound(ItemStackRequestPacket.class, wrapped -> {
             final ItemStackRequestPacket packet = (ItemStackRequestPacket) wrapped.getPacket();
 
@@ -54,6 +78,7 @@ public class GlobalItemTranslator extends ProtocolToProtocol {
         this.registerClientbound(InventoryContentPacket.class, wrapped -> {
             final InventoryContentPacket packet = (InventoryContentPacket) wrapped.getPacket();
             packet.getContents().replaceAll(itemData -> TypeConverter.translateItemData(wrapped.session(), wrapped.getInput(), wrapped.getOutput(), itemData));
+            packet.setStorageItem(TypeConverter.translateItemData(wrapped.session(), wrapped.getInput(), wrapped.getOutput(), packet.getStorageItem()));
         });
 
         this.registerClientbound(ItemComponentPacket.class, wrapped -> {
@@ -71,23 +96,17 @@ public class GlobalItemTranslator extends ProtocolToProtocol {
         this.registerClientbound(CraftingDataPacket.class, wrapped -> {
             final CraftingDataPacket packet = (CraftingDataPacket) wrapped.getPacket();
 
-            // TODO: Properly translate these... Not too hard however I'm not used to this codebase (ouranos) yet!
-            packet.getPotionMixData().clear();
-            packet.getMaterialReducers().clear();
-            packet.getCraftingData().clear();
-            packet.getContainerMixData().clear();
-            packet.setCleanRecipes(true);
+            com.github.blackjack200.ouranos.converter.RecipeTranslator.translate(wrapped.session(), packet);
         });
 
         this.registerClientbound(CreativeContentPacket.class, wrapped -> {
             final CreativeContentPacket packet = (CreativeContentPacket) wrapped.getPacket();
             final int input = wrapped.getInput(), output = wrapped.getOutput();
 
-            // Temp fix for now.
-            packet.getContents().clear();
-            packet.getGroups().clear();
-//            packet.getContents().replaceAll(itemData -> TypeConverter.translateCreativeItemData(input, output, itemData));
-//            packet.getGroups().replaceAll(group -> group.toBuilder().icon(TypeConverter.translateItemData(input, output, group.getIcon())).build());
+            packet.getContents().replaceAll(entry -> entry.toBuilder()
+                    .item(TypeConverter.translateItemData(wrapped.session(), input, output, entry.getItem())).build());
+            packet.getGroups().replaceAll(group -> group.toBuilder()
+                    .icon(TypeConverter.translateItemData(wrapped.session(), input, output, group.getIcon())).build());
         });
 
         this.registerClientbound(AddItemEntityPacket.class, wrapped -> {

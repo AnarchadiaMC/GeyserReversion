@@ -24,6 +24,10 @@ public final class ItemTypeDictionary extends AbstractMapping {
     private ItemTypeDictionary() {
     }
 
+    public static void registerRuntimeDefinitions(int protocolId, Map<String, ItemTypeInfo> definitions) {
+        entries.put(protocolId, new InnerEntry(Map.copyOf(definitions)));
+    }
+
     public static InnerEntry getInstance(int protocolId) {
         return entries.computeIfAbsent(protocolId, (protocol) -> {
             if (protocol > Bedrock_v408.CODEC.getProtocolVersion()) {
