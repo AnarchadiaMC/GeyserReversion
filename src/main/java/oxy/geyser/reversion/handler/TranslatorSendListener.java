@@ -7,7 +7,6 @@ import lombok.NonNull;
 import org.cloudburstmc.protocol.bedrock.BedrockServerSession;
 import org.cloudburstmc.protocol.bedrock.packet.BedrockPacket;
 import org.cloudburstmc.protocol.bedrock.packet.ItemComponentPacket;
-import org.cloudburstmc.protocol.bedrock.packet.StartGamePacket;
 import org.geysermc.geyser.session.UpstreamSession;
 import oxy.geyser.reversion.GeyserReversion;
 import oxy.geyser.reversion.session.GeyserTranslatedUser;
@@ -16,6 +15,7 @@ import oxy.geyser.reversion.util.RegistryUtil;
 public final class TranslatorSendListener extends UpstreamSession {
     private final GeyserTranslatedUser user;
     private final UpstreamSession oldSession;
+    private final oxy.geyser.reversion.util.TranslationFailures failures = new oxy.geyser.reversion.util.TranslationFailures();
 
     public TranslatorSendListener(GeyserTranslatedUser user, BedrockServerSession session, UpstreamSession oldSession) {
         super(session);
@@ -47,6 +47,9 @@ public final class TranslatorSendListener extends UpstreamSession {
 
     @Override
     public void sendPacketImmediately(@NonNull BedrockPacket packet) {
+        if (packet instanceof ItemComponentPacket components) {
+            RegistryUtil.onItemComponent(this.user, components);
+        }
         if (this.user != null) {
             final BedrockPacket translated = this.translate(packet);
             if (translated != null) {
@@ -71,9 +74,7 @@ public final class TranslatorSendListener extends UpstreamSession {
 
             return this.user.decodeClient(output, newId);
         } catch (Exception exception) {
-            if (GeyserReversion.CONFIG.debugMode()) {
-                GeyserReversion.LOGGER.severe("Failed to translate " + packet.getPacketType() + " (clientbound)!", exception);
-            }
+            failures.report(user.getSession(), packet, "clientbound", exception);
         } finally {
             input.release();
             output.release();

@@ -33,15 +33,12 @@ import org.checkerframework.checker.nullness.qual.NonNull;
 import org.cloudburstmc.netty.channel.raknet.config.RakChannelOption;
 import org.cloudburstmc.protocol.bedrock.BedrockPeer;
 import org.cloudburstmc.protocol.bedrock.BedrockServerSession;
-import org.cloudburstmc.protocol.bedrock.netty.codec.packet.BedrockPacketCodec;
 import org.cloudburstmc.protocol.bedrock.netty.initializer.BedrockServerInitializer;
 import org.geysermc.geyser.GeyserImpl;
 import org.geysermc.geyser.network.GeyserBedrockPeer;
 import org.geysermc.geyser.network.InvalidPacketHandler;
 import org.geysermc.geyser.session.GeyserSession;
 import oxy.geyser.reversion.handler.TranslatorPacketHandler;
-
-import java.net.InetSocketAddress;
 
 public class TranslatorServerInitializer extends BedrockServerInitializer {
     private final GeyserImpl geyser;
@@ -66,25 +63,12 @@ public class TranslatorServerInitializer extends BedrockServerInitializer {
     @Override
     public void initSession(@NonNull BedrockServerSession bedrockServerSession) {
         try {
-            try {
-                java.lang.reflect.Method getProxiedAddressesMethod = this.geyser.getGeyserServer().getClass().getMethod("getProxiedAddresses");
-                java.util.Map<java.net.InetSocketAddress, java.net.InetSocketAddress> proxiedAddresses = (java.util.Map<java.net.InetSocketAddress, java.net.InetSocketAddress>) getProxiedAddressesMethod.invoke(this.geyser.getGeyserServer());
-                if (proxiedAddresses != null) {
-                    InetSocketAddress address = proxiedAddresses.get((InetSocketAddress) bedrockServerSession.getSocketAddress());
-                    if (address != null) {
-                        ((GeyserBedrockPeer) bedrockServerSession.getPeer()).setProxiedAddress(address);
-                    }
-                }
-            } catch (NoSuchMethodException | IllegalAccessException | java.lang.reflect.InvocationTargetException ignored) {
-                // Method no longer exists in newer versions of Geyser, safe to ignore.
-            }
-
-            bedrockServerSession.setLogging(true);
+            bedrockServerSession.setLogging(this.geyser.config().debugMode());
             GeyserSession session = new GeyserSession(this.geyser, bedrockServerSession, this.eventLoopGroup.next());
 
             if (!bedrockServerSession.isSubClient()) {
                 Channel channel = bedrockServerSession.getPeer().getChannel();
-                channel.pipeline().addAfter(BedrockPacketCodec.NAME, InvalidPacketHandler.NAME, new InvalidPacketHandler(session));
+                channel.pipeline().addAfter(BedrockPeer.NAME, InvalidPacketHandler.NAME, new InvalidPacketHandler(session));
             }
 
             bedrockServerSession.setPacketHandler(new TranslatorPacketHandler(this.geyser, session));

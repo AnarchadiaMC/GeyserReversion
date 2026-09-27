@@ -1,7 +1,6 @@
 package oxy.geyser.reversion;
 
 import org.cloudburstmc.protocol.bedrock.codec.BedrockCodec;
-import org.cloudburstmc.protocol.bedrock.codec.BedrockCodecHelper;
 import org.cloudburstmc.protocol.bedrock.codec.v361.Bedrock_v361;
 import org.cloudburstmc.protocol.bedrock.codec.v388.Bedrock_v388;
 import org.cloudburstmc.protocol.bedrock.codec.v389.Bedrock_v389;
@@ -51,7 +50,11 @@ import org.cloudburstmc.protocol.bedrock.codec.v818.Bedrock_v818;
 import org.cloudburstmc.protocol.bedrock.codec.v819.Bedrock_v819;
 import org.cloudburstmc.protocol.bedrock.codec.v827.Bedrock_v827;
 import org.cloudburstmc.protocol.bedrock.codec.v844.Bedrock_v844;
-import org.cloudburstmc.protocol.bedrock.data.EncodingSettings;
+import org.cloudburstmc.protocol.bedrock.codec.v898.Bedrock_v898;
+import org.cloudburstmc.protocol.bedrock.codec.v859.Bedrock_v859;
+import org.cloudburstmc.protocol.bedrock.codec.v860.Bedrock_v860;
+import org.cloudburstmc.protocol.bedrock.codec.v924.Bedrock_v924;
+import org.cloudburstmc.protocol.bedrock.codec.v944.Bedrock_v944;
 
 import java.util.Collections;
 import java.util.Set;
@@ -72,9 +75,7 @@ public class DuplicatedProtocolInfo {
     }
 
     public static void addPacketCodec(BedrockCodec packetCodec) {
-        BedrockCodecHelper helper = packetCodec.createHelper();
-        helper.setEncodingSettings(EncodingSettings.builder().maxListSize(Integer.MAX_VALUE).maxByteArraySize(Integer.MAX_VALUE).maxNetworkNBTSize(Integer.MAX_VALUE).maxItemNBTSize(Integer.MAX_VALUE).maxStringLength(Integer.MAX_VALUE).build());
-        PACKET_CODECS.add(packetCodec.toBuilder().helper(() -> helper).build());
+        PACKET_CODECS.add(oxy.geyser.reversion.util.CodecUtil.rebuildCodec(packetCodec));
     }
 
     public static Set<BedrockCodec> getPacketCodecs() {
@@ -82,7 +83,13 @@ public class DuplicatedProtocolInfo {
     }
 
     static {
-        // 1.21-1.21.111
+        // Modern clients are passed through to Geyser; 944 is our shared bridge.
+        addPacketCodec(Bedrock_v944.CODEC);
+        addPacketCodec(Bedrock_v924.CODEC);
+        // 1.21-1.21.132
+        addPacketCodec(Bedrock_v898.CODEC);
+        addPacketCodec(Bedrock_v860.CODEC);
+        addPacketCodec(Bedrock_v859.CODEC);
         addPacketCodec(Bedrock_v844.CODEC);
         addPacketCodec(Bedrock_v827.CODEC);
         addPacketCodec(Bedrock_v819.CODEC);

@@ -4,6 +4,7 @@ import com.github.blackjack200.ouranos.shaded.protocol.bedrock.codec.v575.Bedroc
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
+import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.EventLoopGroup;
 import io.netty.util.NettyRuntime;
 import io.netty.util.concurrent.DefaultThreadFactory;
@@ -12,12 +13,12 @@ import lombok.SneakyThrows;
 import net.lenni0451.classtransform.TransformerManager;
 import net.lenni0451.reflect.Agents;
 import org.cloudburstmc.netty.channel.raknet.RakChannelFactory;
+import org.cloudburstmc.netty.channel.raknet.config.DefaultRakServerThrottle;
 import org.cloudburstmc.netty.channel.raknet.config.RakChannelOption;
+import org.cloudburstmc.netty.channel.raknet.config.RakServerCookieMode;
 import org.cloudburstmc.netty.handler.codec.raknet.server.RakServerOfflineHandler;
-import org.cloudburstmc.netty.handler.codec.raknet.server.RakServerRateLimiter;
 import org.cloudburstmc.protocol.bedrock.codec.BedrockCodec;
-import org.cloudburstmc.protocol.bedrock.codec.v818.Bedrock_v818;
-import org.cloudburstmc.protocol.bedrock.codec.v844.Bedrock_v844;
+import org.cloudburstmc.protocol.bedrock.codec.v898.Bedrock_v898;
 import org.geysermc.event.subscribe.Subscribe;
 import org.geysermc.geyser.GeyserImpl;
 import org.geysermc.geyser.api.event.lifecycle.GeyserPostInitializeEvent;
@@ -30,7 +31,6 @@ import org.geysermc.geyser.network.netty.Bootstraps;
 import org.geysermc.geyser.network.netty.GeyserServer;
 import org.geysermc.geyser.network.netty.handler.RakConnectionRequestHandler;
 import org.geysermc.geyser.network.netty.handler.RakPingHandler;
-import org.geysermc.geyser.network.netty.proxy.ProxyServerHandler;
 import org.geysermc.mcprotocollib.network.helper.TransportHelper;
 import oxy.geyser.reversion.config.Config;
 import oxy.geyser.reversion.config.ConfigLoader;
@@ -42,7 +42,6 @@ import oxy.geyser.reversion.util.GeyserExtensionClassProvider;
 
 import java.lang.reflect.Field;
 import java.net.InetSocketAddress;
-import java.util.Comparator;
 
 import static org.cloudburstmc.netty.channel.raknet.RakConstants.DEFAULT_GLOBAL_PACKET_LIMIT;
 import static org.cloudburstmc.netty.channel.raknet.RakConstants.DEFAULT_PACKET_LIMIT;
@@ -51,7 +50,7 @@ public class GeyserReversion implements Extension {
 
     public static ExtensionLogger LOGGER;
 
-    public static BedrockCodec BRIDGE_GEYSER_CODEC = CodecUtil.rebuildCodec(Bedrock_v844.CODEC);
+    public static BedrockCodec BRIDGE_GEYSER_CODEC = CodecUtil.rebuildCodec(Bedrock_v898.CODEC);
 
     private static final TransportHelper.TransportType TRANSPORT = TransportHelper.TRANSPORT_TYPE;
 
@@ -80,7 +79,6 @@ public class GeyserReversion implements Extension {
 //        }
     }
 
-    // Fucking hell.
     @SneakyThrows
     @Subscribe
     public void onGeyserPostInitializeEvent(GeyserPostInitializeEvent event) {
@@ -88,9 +86,13 @@ public class GeyserReversion implements Extension {
 
         final GeyserImpl geyser = GeyserImpl.getInstance();
         BRIDGE_GEYSER_CODEC = resolveBridgeCodec();
+        int verifiedItems = oxy.geyser.reversion.util.BridgeMappingAudit.verifyItems(BRIDGE_GEYSER_CODEC.getProtocolVersion());
+        LOGGER.info("Verified " + verifiedItems + " vanilla bridge item runtime IDs against Geyser mappings.");
+        int verifiedBlocks = oxy.geyser.reversion.util.BridgeMappingAudit.verifyBlocks(BRIDGE_GEYSER_CODEC.getProtocolVersion());
+        LOGGER.info("Verified " + verifiedBlocks + " bridge block runtime states against Geyser mappings.");
         LOGGER.info("Using Bedrock bridge codec " + BRIDGE_GEYSER_CODEC.getMinecraftVersion()
                 + " (" + BRIDGE_GEYSER_CODEC.getProtocolVersion() + ") for translated clients.");
-        // We have to kill off the server then restart again :D to use our packet handler...
+        // Restart Geyser's Bedrock listener so translated sessions use our packet handler.
         geyser.getGeyserServer().shutdown();
 
         Integer bedrockThreadCount = Integer.getInteger("Geyser.BedrockNetworkThreads");
@@ -105,6 +107,11 @@ public class GeyserReversion implements Extension {
         int rakPacketLimit = positivePropOrDefault("Geyser.RakPacketLimit", DEFAULT_PACKET_LIMIT);
         int rakGlobalPacketLimit = positivePropOrDefault("Geyser.RakGlobalPacketLimit", DEFAULT_GLOBAL_PACKET_LIMIT);
         boolean rakSendCookie = Boolean.parseBoolean(System.getProperty("Geyser.RakSendCookie", "true"));
+        int maxConnectionsPerAddress = positivePropOrDefault("Geyser.MaxConnectionsPerAddress", 10);
+        boolean rakRateLimitingDisabled = Boolean.parseBoolean(System.getProperty(
+                "Geyser.RakRateLimitingDisabled",
+                Boolean.toString(geyser.config().advanced().bedrock().useWaterdogpeForwarding())
+        ));
         TranslatorServerInitializer serverInitializer = new TranslatorServerInitializer(geyser, rakSendCookie);
 
         final ServerBootstrap bootstrap = new ServerBootstrap()
@@ -112,12 +119,17 @@ public class GeyserReversion implements Extension {
                 .group(group, childGroup)
                 .option(RakChannelOption.RAK_HANDLE_PING, true)
                 .option(RakChannelOption.RAK_MAX_MTU, geyser.config().advanced().bedrock().mtu())
-                .option(RakChannelOption.RAK_PACKET_LIMIT, rakPacketLimit)
+                .option(RakChannelOption.RAK_PACKET_LIMIT, rakRateLimitingDisabled ? 0 : rakPacketLimit)
                 .option(RakChannelOption.RAK_GLOBAL_PACKET_LIMIT, rakGlobalPacketLimit)
+                .option(RakChannelOption.RAK_SERVER_COOKIE_MODE,
+                        rakSendCookie ? RakServerCookieMode.ACTIVE : RakServerCookieMode.INVALID)
+                .option(RakChannelOption.RAK_PROXY_PROTOCOL,
+                        geyser.config().advanced().bedrock().useHaproxyProtocol())
+                .option(RakChannelOption.RAK_THROTTLE,
+                        rakRateLimitingDisabled ? null : new DefaultRakServerThrottle(maxConnectionsPerAddress, 4_000, 3))
                 .childHandler(serverInitializer);
-        applyRakCookieCompatibility(bootstrap, rakSendCookie);
 
-        setupBootstrapCompat(bootstrap);
+        Bootstraps.setupBootstrap(bootstrap, TRANSPORT);
 
         final Field field = GeyserServer.class.getDeclaredField("bootstrapFutures");
         field.setAccessible(true);
@@ -146,31 +158,19 @@ public class GeyserReversion implements Extension {
     }
 
     private void modifyHandlers(ChannelFuture future) {
-        Channel channel = future.channel();
-        // Add our ping handler
-        channel.pipeline()
-                .addFirst(RakConnectionRequestHandler.NAME, new RakConnectionRequestHandler(GeyserImpl.getInstance().getGeyserServer()))
-                .addAfter(RakServerOfflineHandler.NAME, RakPingHandler.NAME, new RakPingHandler(GeyserImpl.getInstance().getGeyserServer()));
-
-        // Add proxy handler
-        boolean isProxyProtocol = GeyserImpl.getInstance().config().advanced().bedrock().useHaproxyProtocol();
-        if (isProxyProtocol) {
-            channel.pipeline().addFirst("proxy-protocol-decoder", new ProxyServerHandler());
-        }
-
-        boolean isWhitelistedProxyProtocol = isProxyProtocol && !GeyserImpl.getInstance().config().advanced().bedrock().haproxyProtocolWhitelistedIps().isEmpty();
-        if (Boolean.parseBoolean(System.getProperty("Geyser.RakRateLimitingDisabled", "false")) || isWhitelistedProxyProtocol) {
-            // We would already block any non-whitelisted IP addresses in onConnectionRequest so we can remove the rate limiter
-            channel.pipeline().remove(RakServerRateLimiter.NAME);
-        } else {
-            // Use our own rate limiter to allow multiple players from the same IP if RakGeyserRateLimiter exists in this Geyser version
-            try {
-                Class<?> rakGeyserRateLimiterClass = Class.forName("org.geysermc.geyser.network.netty.handler.RakGeyserRateLimiter");
-                channel.pipeline().replace(RakServerRateLimiter.NAME, "rak-geyser-rate-limiter", (io.netty.channel.ChannelHandler) rakGeyserRateLimiterClass.getConstructor(Channel.class).newInstance(channel));
-            } catch (ReflectiveOperationException ignored) {
-                // If it doesn't exist, we just keep the default RakServerRateLimiter in the pipeline
+        future.addListener((ChannelFutureListener) result -> {
+            if (!result.isSuccess()) {
+                LOGGER.warning("Not modifying handlers due to exception: " + result.cause());
+                return;
             }
-        }
+
+            Channel channel = result.channel();
+            channel.pipeline()
+                    .addBefore(RakServerOfflineHandler.NAME, RakConnectionRequestHandler.NAME,
+                            new RakConnectionRequestHandler(GeyserImpl.getInstance().getGeyserServer()))
+                    .addAfter(RakServerOfflineHandler.NAME, RakPingHandler.NAME,
+                            new RakPingHandler(GeyserImpl.getInstance().getGeyserServer()));
+        });
     }
 
     private int positivePropOrDefault(String property, int defaultValue) {
@@ -195,79 +195,8 @@ public class GeyserReversion implements Extension {
     }
 
     private BedrockCodec resolveBridgeCodec() {
-        BedrockCodec sharedCodec = DuplicatedProtocolInfo.getPacketCodecs().stream()
-                .filter(codec -> GameProtocol.getBedrockCodec(codec.getProtocolVersion()) != null)
-                .max(Comparator.comparingInt(BedrockCodec::getProtocolVersion))
-                .orElse(null);
-        if (sharedCodec != null) {
-            return sharedCodec;
-        }
-
-        BedrockCodec fallbackCodec = DuplicatedProtocolInfo.getPacketCodecs().stream()
-                .max(Comparator.comparingInt(BedrockCodec::getProtocolVersion))
-                .orElseThrow(() -> new IllegalStateException("GeyserReversion has no Bedrock codecs available."));
-        LOGGER.warning("No shared Bedrock codec found between Geyser (" + GameProtocol.getAllSupportedBedrockVersions()
-                + ") and GeyserReversion. Falling back to local bridge codec "
-                + fallbackCodec.getMinecraftVersion() + " (" + fallbackCodec.getProtocolVersion()
-                + ") to keep translated clients enabled.");
-        return fallbackCodec;
+        return oxy.geyser.reversion.util.BridgeCodecSelector.select(
+                DuplicatedProtocolInfo.getPacketCodecs(), protocol -> GameProtocol.getBedrockCodec(protocol) != null);
     }
 
-    @SuppressWarnings({"rawtypes", "unchecked"})
-    private void applyRakCookieCompatibility(ServerBootstrap bootstrap, boolean rakSendCookie) {
-        try {
-            var cookieModeOption = RakChannelOption.class.getField("RAK_SERVER_COOKIE_MODE").get(null);
-            Class<?> cookieModeClass = Class.forName("org.cloudburstmc.netty.channel.raknet.config.RakServerCookieMode");
-            Object cookieMode = Enum.valueOf((Class<? extends Enum>) cookieModeClass.asSubclass(Enum.class),
-                    rakSendCookie ? "ACTIVE" : "INVALID");
-            bootstrap.option((io.netty.channel.ChannelOption) cookieModeOption, cookieMode);
-            return;
-        } catch (ClassNotFoundException | NoSuchFieldException ignored) {
-            // Fall back to pre-2.9.5 cookie options.
-        } catch (IllegalAccessException e) {
-            throw new RuntimeException("Failed to configure RakNet cookie mode", e);
-        }
-
-        for (String optionName : new String[]{"RAK_SEND_COOKIE", "RAK_SERVER_COOKIE"}) {
-            try {
-                Object option = RakChannelOption.class.getField(optionName).get(null);
-                bootstrap.option((io.netty.channel.ChannelOption) option, rakSendCookie);
-                return;
-            } catch (NoSuchFieldException ignored) {
-                // Try next compatible field name.
-            } catch (IllegalAccessException e) {
-                throw new RuntimeException("Failed to read RakChannelOption." + optionName, e);
-            }
-        }
-
-        LOGGER.debug("No compatible RakNet cookie option found; continuing without cookie configuration");
-    }
-
-    /**
-     * Compatibility wrapper for Bootstraps.setupBootstrap - supports both old
-     * and new Geyser API. New API (2.9.3+): setupBootstrap(AbstractBootstrap,
-     * TransportType) Old API: setupBootstrap(AbstractBootstrap)
-     */
-    private void setupBootstrapCompat(ServerBootstrap bootstrap) {
-        try {
-            // Try new API first (Geyser 2.9.3+)
-            var method = Bootstraps.class.getMethod("setupBootstrap",
-                    io.netty.bootstrap.AbstractBootstrap.class,
-                    TransportHelper.TransportType.class);
-            method.invoke(null, bootstrap, TRANSPORT);
-            LOGGER.debug("Using new Bootstraps.setupBootstrap(bootstrap, transport) API");
-        } catch (NoSuchMethodException e) {
-            // Fall back to old API
-            try {
-                var method = Bootstraps.class.getMethod("setupBootstrap",
-                        io.netty.bootstrap.AbstractBootstrap.class);
-                method.invoke(null, bootstrap);
-                LOGGER.debug("Using legacy Bootstraps.setupBootstrap(bootstrap) API");
-            } catch (Exception ex) {
-                throw new RuntimeException("Failed to call Bootstraps.setupBootstrap - no compatible method found", ex);
-            }
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to call Bootstraps.setupBootstrap", e);
-        }
-    }
 }

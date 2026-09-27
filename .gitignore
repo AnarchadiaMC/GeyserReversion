@@ -1,3 +1,13 @@
 build/
 .gradle/
 .idea/
+.vscode/
+# Runtime files and credentials never belong in public source releases.
+logs/
+extensions/
+packs/
+key.pem
+*.p12
+*.jks
+.env
+.env.*

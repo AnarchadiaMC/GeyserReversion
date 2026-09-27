@@ -14,6 +14,7 @@ import org.cloudburstmc.protocol.bedrock.packet.*;
 import org.cloudburstmc.protocol.common.PacketSignal;
 import org.geysermc.geyser.GeyserImpl;
 
+import org.geysermc.geyser.api.event.bedrock.SessionInitializeEvent;
 import org.geysermc.geyser.event.type.SessionLoadResourcePacksEventImpl;
 import org.geysermc.geyser.network.GameProtocol;
 import org.geysermc.geyser.registry.BlockRegistries;
@@ -26,8 +27,8 @@ import oxy.geyser.reversion.DuplicatedProtocolInfo;
 import oxy.geyser.reversion.GeyserReversion;
 import oxy.geyser.reversion.handler.duplicated.UpstreamPacketHandler;
 import oxy.geyser.reversion.session.GeyserTranslatedUser;
-import oxy.geyser.reversion.util.ClientDataUtil;
 import oxy.geyser.reversion.util.GeyserUtil;
+import org.geysermc.geyser.util.LoginEncryptionUtils;
 
 
 import java.util.List;
@@ -42,9 +43,13 @@ public final class TranslatorPacketHandler extends UpstreamPacketHandler {
     }
 
     private int clientProtocol = -1;
+    private final oxy.geyser.reversion.util.TranslationFailures failures = new oxy.geyser.reversion.util.TranslationFailures();
     @Override
     public PacketSignal handle(RequestNetworkSettingsPacket packet) {
         this.clientProtocol = packet.getProtocolVersion();
+        if (checkCodec(this.clientProtocol)) {
+            return PacketSignal.HANDLED;
+        }
         if (GameProtocol.getBedrockCodec(packet.getProtocolVersion()) != null) {
             return super.handle(packet);
         }
@@ -70,7 +75,14 @@ public final class TranslatorPacketHandler extends UpstreamPacketHandler {
 
     @Override
     public PacketSignal handle(LoginPacket packet) {
+        if (networkSettingsRequested && this.clientProtocol != packet.getProtocolVersion()) {
+            session.disconnect("Bedrock login protocol does not match network settings.");
+            return PacketSignal.HANDLED;
+        }
         this.clientProtocol = packet.getProtocolVersion();
+        if (checkCodec(this.clientProtocol)) {
+            return PacketSignal.HANDLED;
+        }
         if (GameProtocol.getBedrockCodec(packet.getProtocolVersion()) != null) {
             return super.handle(packet);
         }
@@ -87,6 +99,12 @@ public final class TranslatorPacketHandler extends UpstreamPacketHandler {
 
         // The player is using the version before authentication change, damn it. Let's handle this ourselves...
         if (this.clientProtocol < Bedrock_v589.CODEC.getProtocolVersion()) {
+            if (receivedLoginPacket) {
+                session.disconnect("Received duplicate login packet!");
+                session.forciblyCloseUpstream();
+                return PacketSignal.HANDLED;
+            }
+            receivedLoginPacket = true;
             if (geyser.isShuttingDown() || geyser.isReloading()) {
                 // Don't allow new players in if we're no longer operating
                 session.disconnect(GeyserLocale.getLocaleStringLog("geyser.core.shutdown.kick.message"));
@@ -97,12 +115,20 @@ public final class TranslatorPacketHandler extends UpstreamPacketHandler {
             session.setBlockMappings(BlockRegistries.BLOCKS.forVersion(packet.getProtocolVersion()));
             session.setItemMappings(Registries.ITEMS.forVersion(packet.getProtocolVersion()));
 
-            // Call this just to set the client data lol...
-            ClientDataUtil.setClientData(session, packet);
+            LoginEncryptionUtils.encryptPlayerConnection(session, packet);
 
             if (session.isClosed()) {
+                session.forciblyCloseUpstream();
                 return PacketSignal.HANDLED;
             }
+
+            if (geyser.getSessionManager().isXuidAlreadyPending(session.xuid()) || geyser.getSessionManager().sessionByXuid(session.xuid()) != null) {
+                session.disconnect(GeyserLocale.getLocaleStringLog("geyser.auth.already_loggedin", session.bedrockUsername()));
+                return PacketSignal.HANDLED;
+            }
+
+            geyser.getSessionManager().addPendingSession(session);
+            geyser.eventBus().fire(new SessionInitializeEvent(session));
 
             PlayStatusPacket playStatus = new PlayStatusPacket();
             playStatus.setStatus(PlayStatusPacket.Status.LOGIN_SUCCESS);
@@ -114,15 +140,17 @@ public final class TranslatorPacketHandler extends UpstreamPacketHandler {
                 // Can happen if an error occurs in the resource pack event; that'll disconnect the player
                 return PacketSignal.HANDLED;
             }
+            session.integratedPackActive(resourcePackLoadEvent.isIntegratedPackActive());
 
             // Let's just send player stuff, don't spawn them in yet....
             ResourcePacksInfoPacket resourcePacksInfo = new ResourcePacksInfoPacket();
             resourcePacksInfo.getResourcePackInfos().addAll(this.resourcePackLoadEvent.infoPacketEntries());
             resourcePacksInfo.setVibrantVisualsForceDisabled(!session.isAllowVibrantVisuals());
 
-            resourcePacksInfo.setForcedToAccept(GeyserImpl.getInstance().config().gameplay().forceResourcePacks());
-            resourcePacksInfo.setWorldTemplateId(UUID.randomUUID());
-            resourcePacksInfo.setWorldTemplateVersion("*");
+            resourcePacksInfo.setForcedToAccept(GeyserImpl.getInstance().config().gameplay().forceResourcePacks()
+                    || resourcePackLoadEvent.isIntegratedPackActive());
+            resourcePacksInfo.setWorldTemplateId(new UUID(0, 0));
+            resourcePacksInfo.setWorldTemplateVersion("");
             session.sendUpstreamPacket(resourcePacksInfo);
 
             GeyserLocale.loadGeyserLocale(session.locale());
@@ -130,9 +158,6 @@ public final class TranslatorPacketHandler extends UpstreamPacketHandler {
         }
 
         super.handle(packet);
-        if (this.user != null) {
-            this.user.setAuthenticated(true);
-        }
 
         return PacketSignal.HANDLED;
     }
@@ -152,35 +177,13 @@ public final class TranslatorPacketHandler extends UpstreamPacketHandler {
             return PacketSignal.HANDLED;
         }
 
-        this.finishedResourcePackSending = true;
-        session.connect(); // We have to spawn player in the void world!
-
-        return PacketSignal.HANDLED;
+        // Authentication mode and saved online logins belong to Geyser, also for legacy clients.
+        return super.handle(packet);
     }
 
     @Override
     public PacketSignal handle(SetLocalPlayerAsInitializedPacket packet) {
-        if (this.user != null && !authenticationStarted) {
-            this.authenticate();
-        }
         return super.handle(packet);
-    }
-
-    private boolean authenticationStarted = false;
-
-    private void authenticate() {
-        if (authenticationStarted) {
-            return; // Already started authentication, don't restart
-        }
-        authenticationStarted = true;
-        
-        // Use Geyser's built-in Microsoft authentication system
-        // This avoids classloader issues with MsaDeviceCode types
-        session.authenticateWithMicrosoftCode();
-        
-        // Note: user.setAuthenticated(true) will be called when the session actually logs in.
-        // Geyser will handle disconnecting the player if auth fails.
-        // We set authenticated = true in handlePacket when session.isLoggedIn() becomes true.
     }
 
 
@@ -208,9 +211,7 @@ public final class TranslatorPacketHandler extends UpstreamPacketHandler {
 
             super.handlePacket(this.user.decodeServer(output, newId));
         } catch (Exception exception) {
-            if (GeyserReversion.CONFIG.debugMode()) {
-                GeyserReversion.LOGGER.severe("Failed to translate " + packet.getPacketType() + " (serverbound)!", exception);
-            }
+            failures.report(session, packet, "serverbound", exception);
         } finally {
             input.release();
             output.release();
