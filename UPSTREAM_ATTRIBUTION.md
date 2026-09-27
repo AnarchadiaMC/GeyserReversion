@@ -19,6 +19,12 @@ All existing copyright, license, notice, author, and contributor records remain 
 
 Depodaki ve Git geçmişindeki tüm telif, lisans, bildirim, yazar ve katkıcı kayıtları korunmuştur. Bu ayna üst projenin yazarlığını sahiplenmez; sonraki değişiklikler ilgili commit yazarlarına aittir.
 
+## Pull request #4 attribution / 4 numaralı birleştirme isteği atfı
+
+The modernization pull request #4 ("Modernize for Geyser 2.9.5", branch `modernize-geyser-2.9.5`) was authored by GitHub user [siberanka](https://github.com/siberanka). Its commits remain in this repository's history unchanged. Three of those commits (`382c0dd`, `bb41ac2`, `581417f`) carry the generic `BuildTools <unconfigured@null.spigotmc.org>` git identity from the contributor's local tooling; the work in them is the contributor's and is attributed to siberanka here and on the original pull request page.
+
+4 numaralı modernizasyon birleştirme isteği ("Modernize for Geyser 2.9.5", `modernize-geyser-2.9.5` dalı) GitHub kullanıcısı [siberanka](https://github.com/siberanka) tarafından hazırlanmıştır. Commit'leri bu deponun geçmişinde değiştirilmeden durmaktadır. Bu commit'lerden üçü (`382c0dd`, `bb41ac2`, `581417f`) katkıcının yerel araçlarından gelen genel `BuildTools <unconfigured@null.spigotmc.org>` kimliğini taşımaktadır; içerdikleri çalışma katkıcıya aittir ve burada ve özgün birleştirme isteği sayfasında siberanka'ya atfedilir.
+
 ## Upstream contributors / Üst proje katkıcıları
 
 GitHub contributor data snapshot: 2026-08-25. [View the live contributor graph](https://github.com/oryxel1/GeyserReversion/graphs/contributors).

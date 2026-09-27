@@ -1,6 +1,7 @@
 package oxy.geyser.reversion.handler;
 
 import oxy.geyser.reversion.ouranos.ProtocolInfo;
+import org.cloudburstmc.protocol.bedrock.codec.v361.Bedrock_v361;
 import org.cloudburstmc.protocol.bedrock.codec.v575.Bedrock_v575;
 import org.cloudburstmc.protocol.bedrock.codec.v589.Bedrock_v589;
 import io.netty.buffer.ByteBuf;
@@ -28,6 +29,7 @@ import oxy.geyser.reversion.GeyserReversion;
 import oxy.geyser.reversion.handler.duplicated.UpstreamPacketHandler;
 import oxy.geyser.reversion.session.GeyserTranslatedUser;
 import oxy.geyser.reversion.util.GeyserUtil;
+import oxy.geyser.reversion.util.BridgeCodecSelector;
 import org.geysermc.geyser.util.LoginEncryptionUtils;
 
 
@@ -262,6 +264,17 @@ public final class TranslatorPacketHandler extends UpstreamPacketHandler {
         }
 
         if (ProtocolInfo.getPacketCodec(protocolVersion) == null && GameProtocol.getBedrockCodec(protocolVersion) == null) {
+            session.getUpstream().getSession().setCodec(BedrockCompat.disconnectCompat(protocolVersion));
+            session.disconnect(GeyserReversion.config().versionNotSupportedKick());
+            return true;
+        }
+
+        // Legacy floor guard: the 1.9.0/1.10.0/1.11.0 codecs are only usable once their generated
+        // vanilla/v<protocol> mapping data exists; without it session setup would fail at runtime,
+        // so kick with the configured "not supported" message instead of hitting an NPE.
+        if (protocolVersion < Bedrock_v361.CODEC.getProtocolVersion()
+                && GameProtocol.getBedrockCodec(protocolVersion) == null
+                && !BridgeCodecSelector.hasMappingData(protocolVersion)) {
             session.getUpstream().getSession().setCodec(BedrockCompat.disconnectCompat(protocolVersion));
             session.disconnect(GeyserReversion.config().versionNotSupportedKick());
             return true;

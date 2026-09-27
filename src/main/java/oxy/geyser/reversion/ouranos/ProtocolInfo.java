@@ -2,6 +2,9 @@ package oxy.geyser.reversion.ouranos;
 
 import oxy.geyser.reversion.ouranos.base.ProtocolToProtocol;
 import oxy.geyser.reversion.ouranos.data.bedrock.GlobalItemDataHandlers;
+import oxy.geyser.reversion.ouranos.translators.new_to_old.v340to332.Protocol340to332;
+import oxy.geyser.reversion.ouranos.translators.new_to_old.v354to340.Protocol354to340;
+import oxy.geyser.reversion.ouranos.translators.new_to_old.v361to354.Protocol361to354;
 import oxy.geyser.reversion.ouranos.translators.new_to_old.v388to361.Protocol388to361;
 import oxy.geyser.reversion.ouranos.translators.new_to_old.v407to390.Protocol407to390;
 import oxy.geyser.reversion.ouranos.translators.new_to_old.v419to408.Protocol419to408;
@@ -32,6 +35,9 @@ import oxy.geyser.reversion.ouranos.translators.old_to_new.v766to776.Protocol766
 import oxy.geyser.reversion.ouranos.utils.CodecUtil;
 import oxy.geyser.reversion.ouranos.utils.Pair;
 import org.cloudburstmc.protocol.bedrock.codec.BedrockCodec;
+import org.cloudburstmc.protocol.bedrock.codec.v332.Bedrock_v332;
+import org.cloudburstmc.protocol.bedrock.codec.v340.Bedrock_v340;
+import org.cloudburstmc.protocol.bedrock.codec.v354.Bedrock_v354;
 import org.cloudburstmc.protocol.bedrock.codec.v361.Bedrock_v361;
 import org.cloudburstmc.protocol.bedrock.codec.v388.Bedrock_v388;
 import org.cloudburstmc.protocol.bedrock.codec.v389.Bedrock_v389;
@@ -177,12 +183,20 @@ public final class ProtocolInfo {
         addPacketCodec(Bedrock_v388.CODEC, 11, new Protocol388to361(), null);
 
         // 1.12.0 partially playable
-        addPacketCodec(Bedrock_v361.CODEC, 11);
+        addPacketCodec(Bedrock_v361.CODEC, 11, new Protocol361to354(), null);
 
-        // 1.11.0 not playable
-        // addPacketCodec(Bedrock_v354.CODEC, 1);
-        // addPacketCodec(Bedrock_v340.CODEC, 21);
-        // addPacketCodec(Bedrock_v332.CODEC, 21);
+        // 1.11.0-1.9.0 partially playable, requires the generated vanilla/v354|v340|v332 data.
+        // Schema id reasoning: GlobalItemDataHandlers.SCHEMA_ID is consumed by ItemIdMetaDowngrader,
+        // which reverts every schema with id > schemaId, so a protocol needs the highest schema id at
+        // or below its target version. Only 0001 (1.6 beta -> 1.6.0) exists at or below 1.9.0/1.10.0/
+        // 1.11.0, so all three use 1. The old commented-out lines assigned 21 to v340/v332, but 21 is
+        // the 1.16.0 schema and would skip reverting 0011 (1.11.4 -> 1.12.0) renames that are still
+        // newer than a 1.9/1.10 client; 1 is the nearest lower valid id for all three versions.
+        addPacketCodec(Bedrock_v354.CODEC, 1, new Protocol354to340(), null);
+        addPacketCodec(Bedrock_v340.CODEC, 1, new Protocol340to332(), null);
+        addPacketCodec(Bedrock_v332.CODEC, 1);
+
+        // 1.8.0/1.7.0 not playable
         // addPacketCodec(Bedrock_v313.CODEC, 21);
         // addPacketCodec(Bedrock_v291.CODEC, 21);
     }

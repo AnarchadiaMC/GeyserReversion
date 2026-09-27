@@ -13,6 +13,9 @@ this fork does not claim original authorship or impose additional restrictions.
 | Copied Geyser packet handlers/initializer | Copyright 2019-2022 GeyserMC; current adaptations remain attributed | MIT, full notices in copied Java headers and `META-INF/licenses/Geyser-MIT.txt` |
 | ClassLoaderPriorityUtil adaptation | Copyright 2021-2025 RK_01 / RaphiMC and ViaProxy contributors | GPL-3.0-or-later, full source notice retained |
 | BedrockData resource collection | IdotClub/BedrockData and original data contributors | LGPL-2.1 collection; per-version CC0 notices in `src/main/resources/vanilla/` take precedence for those data sets |
+| Legacy converter inputs, BedrockData tags 1.9.0/1.10.0/1.11.0 | pmmp/BedrockData contributors | LGPL-3.0, `tools/legacy-data-converter/data/BedrockData/LICENSE`; pinned revisions and checksums in `docs/LEGACY-DATA.md` |
+| Legacy converter inputs, block palettes 1.9/1.10/1.12 | pmmp/BedrockBlockPaletteArchive (now opencollab-incubator) contributors | CC0-1.0, `tools/legacy-data-converter/data/BedrockBlockPaletteArchive/LICENSE` |
+| Generated legacy data `vanilla/v332`, `v340`, `v354` | derived from the two rows above by `tools/legacy-data-converter` | BedrockData-derived files LGPL-3.0, palette-derived files CC0-1.0; per-file SHA-256 in each `manifest.sha256` |
 | Item/block upgrade schemas | pmmp/BedrockItemUpgradeSchema, pmmp/BedrockBlockUpgradeSchema contributors | CC0-1.0, `src/main/resources/schema/LICENSE` and `src/main/resources/block_schema/LICENSE` |
 | Cloudburst Protocol | CloudburstMC contributors | Apache-2.0; upstream sources at https://github.com/CloudburstMC/Protocol |
 | StateUpdater common/block-updater | AllayMC contributors | LGPL-3.0, `META-INF/licenses/StateUpdater-LGPL-3.0.txt`; https://github.com/AllayMC/StateUpdater |
@@ -28,6 +31,13 @@ The combined distribution also contains AGPL-3.0 Ouranos. GPLv3 section 13
 and AGPLv3 section 13 govern this combination, including the network source
 offer requirement. Server operators must prominently provide their users a
 free corresponding-source link (including any operator modifications).
+
+The generated directories `src/main/resources/vanilla/v332`, `v340` and `v354`
+are machine-generated from the pmmp/BedrockData (LGPL-3.0) and
+pmmp/BedrockBlockPaletteArchive (CC0-1.0) inputs checked in under
+`tools/legacy-data-converter/data/`. Do not hand-edit them; regenerate with the
+`generateLegacyData` Gradle task. Pinned revisions, algorithms, the v354
+ordering caveat and the checksum policy are documented in `docs/LEGACY-DATA.md`.
 
 Source for each release is available alongside the JAR on both
 [GitLab](https://gitlab.com/siberanka/GeyserReversion-AIRemake/-/releases) and

@@ -26,6 +26,10 @@ configurations {
         canBeConsumed = false
         transitive = false
     }
+    legacyDataTools {
+        canBeConsumed = false
+        canBeResolved = true
+    }
 }
 
 dependencies {
@@ -56,6 +60,10 @@ dependencies {
     correspondingDependencySources 'org.cloudburstmc.protocol:bedrock-codec:3.0.0.Beta13-20260824.114016-17:sources'
     correspondingDependencySources 'org.cloudburstmc.protocol:common:3.0.0.Beta13-20260824.114016-17:sources'
     correspondingDependencySources 'org.cloudburstmc.protocol:bedrock-connection:3.0.0.Beta13-20260824.114016-17:sources'
+
+    // Offline generator for the legacy per-protocol data directories; never bundled into the JAR.
+    legacyDataTools("org.cloudburstmc:nbt:3.0.5.Final")
+    legacyDataTools("com.google.code.gson:gson:2.13.2")
 
     compileOnly("org.geysermc.geyser:core:2.11.2-20260910.131131-9") {
         exclude group: "com.google.code.gson", module: "gson"
@@ -174,6 +182,36 @@ tasks.named('test') {
     }
 }
 
+// Regenerates src/main/resources/vanilla/v332, v340 and v354 from the upstream inputs checked in
+// under tools/legacy-data-converter/data. Provenance and checksum policy: docs/LEGACY-DATA.md.
+tasks.register('compileLegacyDataConverter', JavaCompile) {
+    description = 'Compiles the offline legacy data converter under tools/legacy-data-converter.'
+    source = fileTree('tools/legacy-data-converter/src/main/java') { include '**/*.java' }
+    classpath = configurations.legacyDataTools
+    destinationDirectory = layout.buildDirectory.dir('legacy-data-converter/classes')
+    options.encoding = 'UTF-8'
+}
+
+tasks.register('generateLegacyData', JavaExec) {
+    description = 'Regenerates the legacy v332/v340/v354 vanilla data from the checked-in upstream inputs.'
+    group = 'verification'
+    dependsOn 'compileLegacyDataConverter'
+    classpath = files(tasks.named('compileLegacyDataConverter', JavaCompile).flatMap { it.destinationDirectory },
+            configurations.legacyDataTools)
+    mainClass = 'oxy.geyser.reversion.tools.LegacyDataConverter'
+    args '--source', file('tools/legacy-data-converter/data').absolutePath,
+            '--output', file('src/main/resources/vanilla').absolutePath
+    if (project.hasProperty('legacyDataModes')) {
+        args '--modes', project.property('legacyDataModes')
+    }
+}
+
+tasks.register('validateAll') {
+    description = 'Aggregate verification task; currently the full test suite.'
+    group = 'verification'
+    dependsOn tasks.named('test')
+}
+
 processResources {
     // Ouranos, BedrockData and Schema licenses already live in src/main/resources/META-INF/licenses.
     from('LICENSE') { into 'META-INF/licenses'; rename { 'GeyserReversion-GPL-3.0.txt' } }
@@ -191,7 +229,7 @@ tasks.register('sourceRelease', Zip) {
     from(configurations.correspondingDependencySources) { into 'dependency-sources' }
     // Explicit allowlist: no .git history/config, IDE settings, credentials or server data.
     from(projectDir) {
-        include 'src/**', 'docs/**', 'gradle/**', 'gradlew', 'gradlew.bat'
+        include 'src/**', 'docs/**', 'gradle/**', 'tools/**', 'gradlew', 'gradlew.bat'
         include 'build.gradle', 'settings.gradle', '.gitignore', '.gitattributes', 'LICENSE'
         include 'README.md', 'UPSTREAM_ATTRIBUTION.md', 'THIRD_PARTY_NOTICES.md'
     }

@@ -1,0 +1,9 @@
+# Protocols whose exact vanilla/v<protocol>/ mapping data directory is absent.
+# Dictionaries for these protocols load through AbstractMapping's nearest-lower-protocol fallback.
+# Update this file when exact data is added or the fallback set intentionally changes.
+390
+408
+545
+568
+686
+819

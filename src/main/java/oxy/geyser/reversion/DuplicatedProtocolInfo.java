@@ -1,6 +1,9 @@
 package oxy.geyser.reversion;
 
 import org.cloudburstmc.protocol.bedrock.codec.BedrockCodec;
+import org.cloudburstmc.protocol.bedrock.codec.v332.Bedrock_v332;
+import org.cloudburstmc.protocol.bedrock.codec.v340.Bedrock_v340;
+import org.cloudburstmc.protocol.bedrock.codec.v354.Bedrock_v354;
 import org.cloudburstmc.protocol.bedrock.codec.v361.Bedrock_v361;
 import org.cloudburstmc.protocol.bedrock.codec.v388.Bedrock_v388;
 import org.cloudburstmc.protocol.bedrock.codec.v389.Bedrock_v389;
@@ -160,5 +163,10 @@ public class DuplicatedProtocolInfo {
 
         // 1.12.0 partially playable
         addPacketCodec(Bedrock_v361.CODEC);
+
+        // 1.11.0-1.9.0 partially playable, requires the generated vanilla/v354|v340|v332 data.
+        addPacketCodec(Bedrock_v354.CODEC);
+        addPacketCodec(Bedrock_v340.CODEC);
+        addPacketCodec(Bedrock_v332.CODEC);
     }
 }
