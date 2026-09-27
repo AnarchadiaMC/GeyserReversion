@@ -1,0 +1,320 @@
+package com.github.blackjack200.ouranos.converter;
+
+import com.github.blackjack200.ouranos.converter.block.BlockHashDowngrader;
+import com.github.blackjack200.ouranos.data.bedrock.GlobalItemDataHandlers;
+import com.github.blackjack200.ouranos.converter.palette.Palette;
+import com.github.blackjack200.ouranos.session.OuranosSession;
+import com.github.blackjack200.ouranos.session.storage.BlockDictionaryStorage;
+import com.github.blackjack200.ouranos.utils.SimpleBlockDefinition;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufAllocator;
+import io.netty.buffer.ByteBufInputStream;
+import io.netty.buffer.ByteBufOutputStream;
+import io.netty.util.ReferenceCountUtil;
+import lombok.SneakyThrows;
+import lombok.experimental.UtilityClass;
+import lombok.val;
+import org.cloudburstmc.nbt.NbtMap;
+import org.cloudburstmc.nbt.NbtUtils;
+import org.cloudburstmc.protocol.bedrock.codec.v361.Bedrock_v361;
+import org.cloudburstmc.protocol.bedrock.codec.v465.Bedrock_v465;
+import org.cloudburstmc.protocol.bedrock.codec.v475.Bedrock_v475;
+import org.cloudburstmc.protocol.bedrock.codec.v503.Bedrock_v503;
+import org.cloudburstmc.protocol.bedrock.codec.v582.Bedrock_v582;
+import org.cloudburstmc.protocol.bedrock.data.definitions.BlockDefinition;
+import org.cloudburstmc.protocol.bedrock.data.definitions.ItemDefinition;
+import org.cloudburstmc.protocol.bedrock.data.definitions.SimpleItemDefinition;
+import org.cloudburstmc.protocol.bedrock.data.inventory.ItemData;
+
+import java.util.ArrayList;
+
+@UtilityClass
+public class TypeConverter {
+    public int[] translateItemRuntimeId(OuranosSession session, int input, int output, int runtimeId, int meta) {
+        var newItem = TypeConverter.translateItemData(session, input, output, ItemData.builder().definition(new SimpleItemDefinition("", runtimeId, false)).damage(meta).count(1).build());
+        return new int[]{newItem.getDefinition().getRuntimeId(), newItem.getDamage()};
+    }
+
+    public ItemData translateItemData(OuranosSession session, int input, int output, ItemData itemData) {
+        if (itemData.isNull() || !itemData.isValid()) {
+            return itemData;
+        }
+
+        if (itemData.getTag() != null) {
+            final ItemData polyfill = ItemTranslator.recoverPolyfillItem(itemData);
+            if (polyfill != null) {
+                return polyfill;
+            }
+        }
+
+        final ItemDefinition def = itemData.getDefinition();
+        var builder = itemData.toBuilder();
+
+        String translatedId = def.getIdentifier();
+        if (translatedId.isEmpty()) {
+            translatedId = ItemTypeDictionary.getInstance(input).fromIntId(def.getRuntimeId());
+        }
+        var translatedMeta = itemData.getDamage();
+
+        var rawData = GlobalItemDataHandlers.getUpgrader().idMetaUpgrader().upgrade(translatedId, translatedMeta);
+        translatedId = rawData[0].toString();
+        translatedMeta = (Integer) rawData[1];
+
+        rawData = GlobalItemDataHandlers.getItemIdMetaDowngrader(output).downgrade(translatedId, translatedMeta);
+        translatedId = rawData[0].toString();
+        translatedMeta = (Integer) rawData[1];
+
+        if (itemData.getBlockDefinition() != null) {
+            final BlockDictionaryStorage storage = session.get(BlockDictionaryStorage.class);
+
+            var inputDict = storage.get(input);
+            var outputDict = storage.get(output);
+
+            Integer hash = itemData.getBlockDefinition().getRuntimeId();
+            if (!session.isHashedBlockIds()) {
+                hash = inputDict.toLatestStateHash(itemData.getBlockDefinition().getRuntimeId());
+            }
+            var inputState = inputDict.lookupStateFromStateHash(hash);
+
+            var outputState = outputDict.lookupStateFromStateHash(inputState.latestStateHash());
+            if (outputState != null) {
+                builder.blockDefinition(new org.cloudburstmc.protocol.bedrock.data.definitions.SimpleBlockDefinition(outputState.name(), outputDict.toRuntimeId(outputState.latestStateHash()), outputState.rawState()));
+            } else {
+                builder.blockDefinition(null);
+            }
+        }
+
+        final ItemTypeDictionary.InnerEntry itemDict = ItemTypeDictionary.getInstance(output);
+        var itemTypeInfo = itemDict.getEntries().getOrDefault(translatedId, null);
+        if (itemTypeInfo == null) {
+            return ItemTranslator.makePolyfillItem(input, output, itemData);
+        }
+        builder.definition(itemTypeInfo.toDefinition(translatedId)).damage(translatedMeta);
+        return builder.build();
+    }
+
+    @SneakyThrows
+    public int rewriteFullChunk(OuranosSession session, int input, int output, ByteBuf from, ByteBuf to, int dimension, int sections) throws ChunkRewriteException {
+        var subChunks = new ArrayList<ByteBuf>();
+        for (var section = 0; section < sections; section++) {
+            var buf = ByteBufAllocator.DEFAULT.buffer();
+            rewriteSubChunk(session, input, output, from, buf);
+            subChunks.add(buf);
+        }
+        var allSubChunks = new ArrayList<>(subChunks);
+        if (subChunks.size() >= 4 && input > Bedrock_v475.CODEC.getProtocolVersion() && output < Bedrock_v475.CODEC.getProtocolVersion()) {
+            subChunks.subList(0, 4).clear();
+        }
+        if (subChunks.size() >= 20 && input > Bedrock_v465.CODEC.getProtocolVersion() && output < Bedrock_v465.CODEC.getProtocolVersion()) {
+            subChunks.subList(subChunks.size() - 4, subChunks.size()).clear();
+        }
+        for (var subChunk : subChunks) {
+            to.writeBytes(subChunk);
+        }
+        for (var subChunk : allSubChunks) {
+            ReferenceCountUtil.release(subChunk);
+        }
+
+        if (output < Bedrock_v361.CODEC.getProtocolVersion()) {
+            to.writeBytes(new byte[512]);
+        }
+        var biomeBuf = rewriteBiomePalette(input, output, from, getDimensionChunkBounds(input, dimension), getDimensionChunkBounds(output, dimension));
+        to.writeBytes(biomeBuf);
+        ReferenceCountUtil.release(biomeBuf);
+
+        var borderBlocks = from.readByte();
+        to.writeByte(borderBlocks);
+        to.writeBytes(from, borderBlocks);
+
+        rewriteBlockEntities(input, output, from, to);
+        return subChunks.size();
+    }
+
+    private static ByteBuf rewriteBiomePalette(int input, int output, ByteBuf from, int nInputSection, int nOutputSection) throws ChunkRewriteException {
+        var biomeBuf = ByteBufAllocator.DEFAULT.buffer().touch();
+        var palettes = new ArrayList<Palette<Integer>>();
+        if (input >= Bedrock_v475.CODEC.getProtocolVersion()) {
+            for (int x = nInputSection; x > 0; x--) {
+                palettes.add(Palette.readNetwork(from, (v) -> v));
+            }
+        } else {
+            var biomeData = from.readBytes(256);
+            var palette = new Palette<>(0);
+            for (int x = 0; x < 16; x++) {
+                for (int z = 0; z < 16; z++) {
+                    int biomeId = biomeData.getByte((z << 4) | x);
+                    for (int y = 0; y < 16; y++) {
+                        palette.set(x, z, y, biomeId);
+                    }
+                }
+            }
+            for (int x = nInputSection; x > 0; x--) {
+                palettes.add(palette);
+            }
+        }
+        if (output >= Bedrock_v475.CODEC.getProtocolVersion()) {
+            if (nInputSection > nOutputSection) {
+                palettes = new ArrayList<>(palettes.subList(0, nOutputSection));
+            } else if (nInputSection < nOutputSection) {
+                var firstPalette = palettes.isEmpty() ? new Palette<Integer>(0) : palettes.get(palettes.size() - 1);
+                for (int i = 0; i < nOutputSection - nInputSection; i++) {
+                    palettes.add(firstPalette);
+                }
+            }
+
+            for (var palette : palettes) {
+                palette.writeNetwork(biomeBuf, output, (v) -> v);
+            }
+        } else {
+            var palette = palettes.get(0);
+            var bytes = new byte[256];
+            for (int x = 0; x < 16; x++) {
+                for (int z = 0; z < 16; z++) {
+                    int biomeId = palette.get(x, 0, z);
+                    for (int y = 0; y < 16; y++) {
+                        bytes[(z << 4) | x] = (byte) (biomeId & 0xff);
+                    }
+                }
+            }
+            biomeBuf.writeBytes(bytes);
+        }
+        return biomeBuf;
+    }
+
+    @SneakyThrows
+    public static void rewriteBlockEntities(int input, int output, ByteBuf from, ByteBuf to) {
+        try (var inp = new ByteBufInputStream(from);
+             var reader = NbtUtils.createNetworkReader(inp);
+             var toStream = new ByteBufOutputStream(to);
+             var rd = NbtUtils.createNetworkWriter(toStream)) {
+            while (inp.available() > 0) {
+                var tag = (NbtMap) reader.readTag();
+                if (tag == null) {
+                    continue;
+                }
+                var id = tag.getString("id");
+                if (id.isEmpty()) {
+                    continue;
+                }
+                rd.writeTag(translateBlockEntity(input, output, tag));
+            }
+        }
+    }
+
+    private static NbtMap translateBlockEntity(int input, int output, NbtMap tag) {
+        var builder = tag.toBuilder();
+        var id = tag.getString("id");
+        if (id.equals("Sign")) {
+            if (tag.containsKey("FrontText")) {
+                builder.putString("Text", tag.getCompound("FrontText").getString("Text"));
+            }
+        }
+        return builder.build();
+    }
+
+    private int getDimensionChunkBounds(int protocol, int dimension) {
+        return switch (dimension) {
+            case 0 ->//overworld
+                    protocol >= Bedrock_v503.CODEC.getProtocolVersion() ? 24 : 25;
+            case 1 ->//nether
+                    8;
+            case 2 ->//the_end
+                    16;
+            default -> protocol >= Bedrock_v503.CODEC.getProtocolVersion() ? 24 : 25;
+        };
+    }
+
+    public static void rewriteSubChunk(OuranosSession session, int input, int output, ByteBuf from, ByteBuf to) throws ChunkRewriteException {
+        var version = from.readUnsignedByte();
+        var isNineSubChunkSupported = output >= Bedrock_v465.CODEC.getProtocolVersion();
+        if (!isNineSubChunkSupported && version == 9) {
+            to.writeByte(8);
+        } else {
+            to.writeByte(version);
+        }
+        switch (version) {
+            case 0, 4, 139 -> to.writeBytes(from, 4096 + 2048);
+            case 1 ->
+                    PaletteStorage.translatePaletteStorage(input, output, from, to, (i, o, v) -> translateBlockRuntimeId(session, i, o, v));
+            case 8, 9 -> { // New form chunk, baked-in palette
+                var storageCount = from.readUnsignedByte();
+                to.writeByte(storageCount);
+                if (version == 9) {
+                    var v = from.readUnsignedByte();//what ??? uint8(index + (c.range[0] >> 4))
+                    if (isNineSubChunkSupported) {
+                        to.writeByte(v);
+                    }
+                }
+                for (var storage = 0; storage < storageCount; storage++) {
+                    PaletteStorage.translatePaletteStorage(input, output, from, to, (i, o, v) -> translateBlockRuntimeId(session, i, o, v));
+                }
+            }
+            default -> // Unsupported
+                    throw new ChunkRewriteException("ChunkDataRewrite: Unknown subchunk format " + version);
+        }
+    }
+
+    public int translateBlockRuntimeId(OuranosSession session, int input, int output, int blockRuntimeId) {
+        final BlockDictionaryStorage storage = session.get(BlockDictionaryStorage.class);
+
+        val inputDict = storage.get(input);
+        val outputDict = storage.get(output);
+
+        boolean outputHashes = session.isHashedBlockIds() && output >= Bedrock_v582.CODEC.getProtocolVersion();
+
+        BlockStateDictionary.Dictionary.BlockEntry entry = session.isHashedBlockIds() ? inputDict.toBlockStateHash(blockRuntimeId) : inputDict.toBlockState(blockRuntimeId);
+        if (entry == null) {
+            return outputHashes ? -2 : outputDict.getFallbackRuntimeId();
+        }
+
+        Integer stateHash = BlockHashDowngrader.downgradeHash(entry, input, output);
+        if (stateHash == null) { // Not possible, but why not make it safe :)
+            return outputHashes ? -2 : outputDict.getFallbackRuntimeId();
+        }
+        if (outputHashes) {
+            return stateHash;
+        }
+
+        Integer translated = outputDict.toRuntimeId(stateHash);
+        return translated == null ? outputDict.getFallbackRuntimeId() : translated;
+    }
+
+    public BlockDefinition translateBlockDefinition(OuranosSession session, int input, int output, BlockDefinition definition) {
+        return new SimpleBlockDefinition(translateBlockRuntimeId(session, input, output, definition.getRuntimeId()));
+    }
+
+//    public ItemDescriptor translateItemDescriptor(int input, int output, ItemDescriptor descriptor) {
+//        if (descriptor instanceof ComplexAliasDescriptor d) {
+//            return d;
+//        } else if (descriptor instanceof DefaultDescriptor d) {
+//            var itemData = translateItemData(input, output, ItemData.builder().count(1).damage(d.getAuxValue()).definition(d.getItemId()).build());
+//            if (itemData == null) {
+//                return InvalidDescriptor.INSTANCE;
+//            }
+//            return new DefaultDescriptor(itemData.getDefinition(), itemData.getDamage());
+//        } else if (descriptor instanceof DeferredDescriptor d) {
+//            var newData = GlobalItemDataHandlers.getUpgrader().idMetaUpgrader().upgrade(d.getFullName(), d.getAuxValue());
+//            var downgraded = GlobalItemDataHandlers.getItemIdMetaDowngrader(output).downgrade(newData[0].toString(), (Integer) newData[1]);
+//            var newStringId = downgraded[0].toString();
+//            var newMeta = (Integer) downgraded[1];
+//            var typ = ItemTypeDictionary.getInstance(output).getEntries().get(newStringId);
+//            //TODO
+//            return new DefaultDescriptor(typ.toDefinition(newStringId), newMeta);
+//        } else if (descriptor instanceof InvalidDescriptor d) {
+//            //noop
+//        } else if (descriptor instanceof ItemTagDescriptor d) {
+//            //TODO
+//            return d;
+//        } else if (descriptor instanceof MolangDescriptor d) {
+//            //TODO
+//            return d;
+//        }
+//        //log.error("unknown descriptor {}", descriptor);
+//        return InvalidDescriptor.INSTANCE;
+//    }
+//
+//    public static CreativeItemData translateCreativeItemData(int input, int output, CreativeItemData itemData) {
+//        var item = translateItemData(input, output, itemData.getItem());
+//        return new CreativeItemData(item, itemData.getNetId(), itemData.getGroupId());
+//    }
+}

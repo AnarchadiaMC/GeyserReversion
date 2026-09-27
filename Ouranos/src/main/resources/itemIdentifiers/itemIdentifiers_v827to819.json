@@ -1,0 +1,21 @@
+{
+  "minecraft:copper_boots": "minecraft:leather_boots",
+  "minecraft:waxed_weathered_copper_chest": "minecraft:chest",
+  "minecraft:copper_leggings": "minecraft:leather_leggings",
+  "minecraft:oxidized_copper_chest": "minecraft:chest",
+  "minecraft:copper_pickaxe": "minecraft:stone_pickaxe",
+  "minecraft:copper_hoe": "minecraft:stone_hoe",
+  "minecraft:copper_chest": "minecraft:chest",
+  "minecraft:weathered_copper_chest": "minecraft:chest",
+  "minecraft:copper_sword": "minecraft:stone_sword",
+  "minecraft:copper_golem_spawn_egg": "minecraft:iron_golem_spawn_egg",
+  "minecraft:copper_shovel": "minecraft:stone_shovel",
+  "minecraft:waxed_copper_chest": "minecraft:chest",
+  "minecraft:waxed_exposed_copper_chest": "minecraft:chest",
+  "minecraft:copper_nugget": "minecraft:iron_nugget",
+  "minecraft:exposed_copper_chest": "minecraft:chest",
+  "minecraft:copper_helmet": "minecraft:leather_helmet",
+  "minecraft:waxed_oxidized_copper_chest": "minecraft:chest",
+  "minecraft:copper_chestplate": "minecraft:leather_chestplate",
+  "minecraft:copper_axe": "minecraft:stone_axe"
+}

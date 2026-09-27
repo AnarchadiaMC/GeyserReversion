@@ -1,0 +1,13 @@
+{
+  "minecraft:wildflowers": "minecraft:pink_petals",
+  "minecraft:bush": "minecraft:short_grass",
+  "minecraft:tall_dry_grass": "minecraft:tall_grass",
+  "minecraft:blue_egg": "minecraft:egg",
+  "minecraft:cactus_flower": "minecraft:bubble_coral_fan",
+  "minecraft:short_dry_grass": "minecraft:dead_bush",
+  "minecraft:leaf_litter": "minecraft:pink_petals",
+  "minecraft:test_instance_block": "minecraft:jigsaw",
+  "minecraft:brown_egg": "minecraft:egg",
+  "minecraft:test_block": "minecraft:structure_block",
+  "minecraft:firefly_bush": "minecraft:short_grass"
+}
