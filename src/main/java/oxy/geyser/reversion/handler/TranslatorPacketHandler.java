@@ -58,6 +58,10 @@ public final class TranslatorPacketHandler extends UpstreamPacketHandler {
             return PacketSignal.HANDLED;
         }
 
+        if (bridgeUnavailable(packet.getProtocolVersion())) {
+            return PacketSignal.HANDLED;
+        }
+
         packet.setProtocolVersion(GeyserReversion.BRIDGE_GEYSER_CODEC.getProtocolVersion());
         session.getUpstream().getSession().setCodec(DuplicatedProtocolInfo.getPacketCodec(this.clientProtocol));
 
@@ -92,10 +96,17 @@ public final class TranslatorPacketHandler extends UpstreamPacketHandler {
             return PacketSignal.HANDLED;
         }
 
+        if (bridgeUnavailable(pv)) {
+            return PacketSignal.HANDLED;
+        }
+
         this.user = new GeyserTranslatedUser(pv, GeyserReversion.BRIDGE_GEYSER_CODEC.getProtocolVersion(), this.session);
         packet.setProtocolVersion(GeyserReversion.BRIDGE_GEYSER_CODEC.getProtocolVersion());
         session.getUpstream().getSession().setCodec(DuplicatedProtocolInfo.getPacketCodec(this.clientProtocol));
-        GeyserUtil.hook(session);
+        if (!GeyserUtil.hook(session)) {
+            session.disconnect("Failed to initialize this Bedrock version connection. Please update Minecraft; the server logged the reason.");
+            return PacketSignal.HANDLED;
+        }
 
         // The player is using the version before authentication change, damn it. Let's handle this ourselves...
         if (this.clientProtocol < Bedrock_v589.CODEC.getProtocolVersion()) {
@@ -219,8 +230,17 @@ public final class TranslatorPacketHandler extends UpstreamPacketHandler {
         return PacketSignal.HANDLED;
     }
 
+    private boolean bridgeUnavailable(int protocolVersion) {
+        if (GeyserReversion.BRIDGE_GEYSER_CODEC != null) {
+            return false;
+        }
+        session.getUpstream().getSession().setCodec(BedrockCompat.disconnectCompat(protocolVersion));
+        session.disconnect(GeyserReversion.config().versionNotSupportedKick());
+        return true;
+    }
+
     private boolean checkCodec(int protocolVersion) {
-        int minProtocolVer = GeyserReversion.CONFIG.minProtocolId();
+        int minProtocolVer = GeyserReversion.config().minProtocolId();
         if (GeyserReversion.INJECTION_FAILED) {
             minProtocolVer = Math.max(Bedrock_v575.CODEC.getProtocolVersion(), minProtocolVer);
         }
@@ -229,21 +249,21 @@ public final class TranslatorPacketHandler extends UpstreamPacketHandler {
             BedrockCodec codec = DuplicatedProtocolInfo.getPacketCodec(minProtocolVer);
             if (codec != null && protocolVersion < minProtocolVer) {
                 session.getUpstream().getSession().setCodec(BedrockCompat.disconnectCompat(protocolVersion));
-                session.disconnect(GeyserReversion.CONFIG.minProtocolKick().replace("%version%", codec.getMinecraftVersion()));
+                session.disconnect(GeyserReversion.config().minProtocolKick().replace("%version%", codec.getMinecraftVersion()));
                 return true;
             }
         }
 
-        List<Integer> blockProtocols = GeyserReversion.CONFIG.blockProtocols();
+        List<Integer> blockProtocols = GeyserReversion.config().blockProtocols();
         if (blockProtocols != null && blockProtocols.contains(protocolVersion)) {
             session.getUpstream().getSession().setCodec(BedrockCompat.disconnectCompat(protocolVersion));
-            session.disconnect(GeyserReversion.CONFIG.blockedProtocolKick());
+            session.disconnect(GeyserReversion.config().blockedProtocolKick());
             return true;
         }
 
         if (ProtocolInfo.getPacketCodec(protocolVersion) == null && GameProtocol.getBedrockCodec(protocolVersion) == null) {
             session.getUpstream().getSession().setCodec(BedrockCompat.disconnectCompat(protocolVersion));
-            session.disconnect(GeyserReversion.CONFIG.versionNotSupportedKick());
+            session.disconnect(GeyserReversion.config().versionNotSupportedKick());
             return true;
         }
 

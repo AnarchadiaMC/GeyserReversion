@@ -17,8 +17,20 @@ import java.util.Collections;
 
 // Credits to https://github.com/onebeastchris/MagicMenu/
 public class ConfigLoader {
-    @SuppressWarnings("ResultOfMethodCallIgnored")
+    private ConfigLoader() {
+    }
+
     public static <T> T load(Extension extension, Class<?> extensionClass, Class<T> configClass) {
+        try {
+            return loadUnchecked(extension, extensionClass, configClass);
+        } catch (RuntimeException e) {
+            extension.logger().error("Failed to load config", e);
+            return null;
+        }
+    }
+
+    @SuppressWarnings("ResultOfMethodCallIgnored")
+    private static <T> T loadUnchecked(Extension extension, Class<?> extensionClass, Class<T> configClass) {
         File configFile = extension.dataFolder().resolve("config.yml").toFile();
 
         // Ensure the data folder exists

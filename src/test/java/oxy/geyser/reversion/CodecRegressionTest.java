@@ -5,6 +5,7 @@ import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import org.cloudburstmc.math.vector.Vector3i;
 import org.cloudburstmc.protocol.bedrock.codec.BedrockCodec;
+import org.cloudburstmc.protocol.bedrock.codec.v944.Bedrock_v944;
 import org.cloudburstmc.protocol.bedrock.data.inventory.ContainerType;
 import org.cloudburstmc.protocol.bedrock.packet.*;
 import org.geysermc.geyser.network.GameProtocol;
@@ -37,11 +38,32 @@ class CodecRegressionTest {
     @Test
     void bridgeIsActuallySupportedByGeyser() {
         var bridge = BridgeCodecSelector.select(DuplicatedProtocolInfo.getPacketCodecs(),
-                protocol -> GameProtocol.getBedrockCodec(protocol) != null);
-        assertEquals(944, bridge.getProtocolVersion());
-        assertThrows(IllegalStateException.class, () -> BridgeCodecSelector.select(
-                DuplicatedProtocolInfo.getPacketCodecs(), protocol -> false));
-        assertThrows(IllegalStateException.class, () -> BridgeCodecSelector.select(List.of(), protocol -> true));
+                protocol -> GameProtocol.getBedrockCodec(protocol) != null,
+                BridgeCodecSelector::hasMappingData);
+        assertEquals(944, bridge.orElseThrow().getProtocolVersion());
+    }
+
+    @Test
+    void emptyCodecIntersectionReturnsEmptyInsteadOfThrowing() {
+        assertTrue(BridgeCodecSelector.select(DuplicatedProtocolInfo.getPacketCodecs(),
+                protocol -> false, protocol -> true).isEmpty());
+        assertTrue(BridgeCodecSelector.select(List.of(),
+                protocol -> true, protocol -> true).isEmpty());
+    }
+
+    @Test
+    void protocolsWithoutMappingDataAreExcludedFromSelection() {
+        var withoutMappings = Bedrock_v944.CODEC.toBuilder()
+                .protocolVersion(2169).minecraftVersion("1.99.0").build();
+        assertFalse(BridgeCodecSelector.hasMappingData(2169));
+        assertTrue(BridgeCodecSelector.select(List.of(withoutMappings),
+                protocol -> true, BridgeCodecSelector::hasMappingData).isEmpty());
+    }
+
+    @Test
+    void mappingDataProbeRecognizesKnownBridgeAndRejectsUnknownProtocol() {
+        assertTrue(BridgeCodecSelector.hasMappingData(944));
+        assertFalse(BridgeCodecSelector.hasMappingData(2169));
     }
 
     @TestFactory

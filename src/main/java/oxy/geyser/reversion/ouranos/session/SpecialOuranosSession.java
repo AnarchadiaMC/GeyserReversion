@@ -2,6 +2,7 @@ package oxy.geyser.reversion.ouranos.session;
 
 import oxy.geyser.reversion.ouranos.ProtocolInfo;
 import oxy.geyser.reversion.ouranos.utils.BlockDictionaryRegistry;
+import oxy.geyser.reversion.util.CodecUtil;
 import io.netty.buffer.ByteBuf;
 import lombok.Getter;
 import org.cloudburstmc.protocol.bedrock.codec.BedrockCodec;
@@ -24,8 +25,10 @@ public abstract class SpecialOuranosSession extends OuranosSession {
         this.clientCodec = ProtocolInfo.getPacketCodec(protocolId);
         this.serverCodec = ProtocolInfo.getPacketCodec(targetVersion);
 
-        this.clientCodecHelper = this.clientCodec.createHelper();
-        this.serverCodecHelper = this.serverCodec.createHelper();
+        // clientCodecHelper decodes serverbound (untrusted client) packets; serverCodecHelper
+        // decodes clientbound (trusted local Geyser) packets, which may carry large payloads.
+        this.clientCodecHelper = CodecUtil.applyServerboundLimits(this.clientCodec.createHelper());
+        this.serverCodecHelper = CodecUtil.applyClientboundLimits(this.serverCodec.createHelper());
 
         this.clientCodecHelper.setBlockDefinitions(new BlockDictionaryRegistry(protocolId, false));
         this.serverCodecHelper.setBlockDefinitions(new BlockDictionaryRegistry(targetVersion, false));

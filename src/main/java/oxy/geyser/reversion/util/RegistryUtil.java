@@ -19,8 +19,10 @@ public class RegistryUtil {
             }
 
             SimpleDefinitionRegistry<ItemDefinition> itemDefinitions = builder.build();
-            user.getCloudburstServerCodecHelper().setItemDefinitions(itemDefinitions);
-            user.getCloudburstClientCodecHelper().setItemDefinitions(new OtherItemTypeDictionaryRegistry(itemDefinitions, user.getProtocolId()));
+            // cloudburstServerCodecHelper decodes serverbound (untrusted client) bridge packets;
+            // cloudburstClientCodecHelper decodes clientbound (trusted local Geyser) packets.
+            CodecUtil.applyServerboundLimits(user.getCloudburstServerCodecHelper()).setItemDefinitions(itemDefinitions);
+            CodecUtil.applyClientboundLimits(user.getCloudburstClientCodecHelper()).setItemDefinitions(new OtherItemTypeDictionaryRegistry(itemDefinitions, user.getProtocolId()));
 
             user.getSession().getUpstream().getCodecHelper().setItemDefinitions(user.getCloudburstClientCodecHelper().getItemDefinitions());
         }
@@ -34,8 +36,8 @@ public class RegistryUtil {
             }
 
             org.cloudburstmc.protocol.common.SimpleDefinitionRegistry<org.cloudburstmc.protocol.bedrock.data.definitions.ItemDefinition> itemDefinitions = builder.build();
-            user.getServerCodecHelper().setItemDefinitions(itemDefinitions);
-            user.getClientCodecHelper().setItemDefinitions(new ItemTypeDictionaryRegistry(itemDefinitions, user.getProtocolId()));
+            CodecUtil.applyClientboundLimits(user.getServerCodecHelper()).setItemDefinitions(itemDefinitions);
+            CodecUtil.applyServerboundLimits(user.getClientCodecHelper()).setItemDefinitions(new ItemTypeDictionaryRegistry(itemDefinitions, user.getProtocolId()));
         }
     }
 }

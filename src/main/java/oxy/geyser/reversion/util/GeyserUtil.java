@@ -10,18 +10,24 @@ import oxy.geyser.reversion.handler.TranslatorSendListener;
 import java.lang.reflect.Field;
 
 public class GeyserUtil {
-    public static void hook(final GeyserSession session) {
+    private GeyserUtil() {
+    }
+
+    public static boolean hook(final GeyserSession session) {
         try {
             injectCloudburstUpstream(session, findCloudburstSession(session));
-        } catch (Exception e) {
-            if (GeyserReversion.CONFIG.debugMode()) {
-                GeyserReversion.LOGGER.severe("Failed to hook translated upstream session", e);
+            return true;
+        } catch (ReflectiveOperationException | RuntimeException e) {
+            GeyserReversion.LOGGER.warning("Failed to hook translated upstream session; disconnecting client. Cause: "
+                    + e.getClass().getSimpleName() + (e.getMessage() != null ? ": " + e.getMessage() : ""));
+            if (GeyserReversion.config().debugMode()) {
+                GeyserReversion.LOGGER.severe("Translated upstream hook failure details", e);
             }
-            session.disconnect("Failed to hook into cloudburst session!");
+            return false;
         }
     }
 
-    private static void injectCloudburstUpstream(final GeyserSession session, final BedrockServerSession downstream) throws Exception {
+    private static void injectCloudburstUpstream(final GeyserSession session, final BedrockServerSession downstream) throws ReflectiveOperationException {
         final Field upstream = GeyserSession.class.getDeclaredField("upstream");
         upstream.setAccessible(true);
 
@@ -32,7 +38,7 @@ public class GeyserUtil {
         upstream.set(session, new TranslatorSendListener(handler.getUser(), downstream, (UpstreamSession) upstream.get(session)));
     }
 
-    private static BedrockServerSession findCloudburstSession(final GeyserSession connection) throws Exception {
+    private static BedrockServerSession findCloudburstSession(final GeyserSession connection) throws ReflectiveOperationException {
         final Field upstream = GeyserSession.class.getDeclaredField("upstream");
         upstream.setAccessible(true);
         final Object session = upstream.get(connection);

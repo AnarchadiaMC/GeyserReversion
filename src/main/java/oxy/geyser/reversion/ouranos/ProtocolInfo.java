@@ -197,7 +197,7 @@ public final class ProtocolInfo {
         final List<ProtocolToProtocol> translators = new ArrayList<>();
         for (Map.Entry<Integer, Pair<ProtocolToProtocol, ProtocolToProtocol>> protocol : (isDescending ? PROTOCOL_TRANSLATORS.descendingMap() : PROTOCOL_TRANSLATORS).entrySet()) {
             final int protocolVersion = protocol.getKey();
-            if (isDescending ? protocolVersion < client : protocolVersion > client) {
+            if (isDescending ? protocolVersion <= client : protocolVersion >= client) {
                 break;
             }
             if (isDescending == (protocolVersion > target)) {
