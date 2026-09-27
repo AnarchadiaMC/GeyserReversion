@@ -4,9 +4,9 @@ This repository preserves the complete Git history of a GitHub fork. GitLab cann
 
 Bu depo, bir GitHub fork'unun eksiksiz Git geçmişini korur. GitLab harici bir GitHub deposunu yerel GitLab fork ilişkisiyle gösteremediğinden proje soyu burada açıkça belgelenmiştir.
 
-Ouranos and its BedrockData resources are vendored in this repository as normal in-tree directories, not Git submodules. Their history is preserved from oryxel1/Ouranos commit `e927ea4` and BedrockData commit `5b9a844`, with local compatibility changes applied in-tree.
+Ouranos and its BedrockData resources are merged into the source tree of this repository; the package is relocated to `oxy.geyser.reversion.ouranos`, upstream history is preserved, and the licenses are retained under `src/main/resources/META-INF/licenses`. Their history is preserved from oryxel1/Ouranos commit `e927ea4` and BedrockData commit `5b9a844`, with local compatibility changes applied in-tree.
 
-Ouranos ve BedrockData kaynakları bu depoda normal ağaç içi dizinler olarak (Git alt modülü olmadan) yer alır. Geçmişleri oryxel1/Ouranos `e927ea4` ve BedrockData `5b9a844` commit'lerinden korunmuştur; yerel uyumluluk değişiklikleri ağaç içinde uygulanmıştır.
+Ouranos ve BedrockData kaynakları bu deponun kaynak ağacına birleştirilmiştir; paket `oxy.geyser.reversion.ouranos` altına taşınmıştır, üst proje geçmişi korunmuştur ve lisanslar `src/main/resources/META-INF/licenses` altında muhafaza edilmektedir. Geçmişleri oryxel1/Ouranos `e927ea4` ve BedrockData `5b9a844` commit'lerinden korunmuştur; yerel uyumluluk değişiklikleri ağaç içinde uygulanmıştır.
 
  - GitHub fork / GitHub çatalı: [siberanka/GeyserReversion-AIRemake](https://github.com/siberanka/GeyserReversion-AIRemake)
  - Immediate parent / Doğrudan üst depo: [AnarchadiaMC/GeyserReversion](https://github.com/AnarchadiaMC/GeyserReversion)

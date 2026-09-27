@@ -1,8 +1,8 @@
 package oxy.geyser.reversion.handler;
 
-import com.github.blackjack200.ouranos.ProtocolInfo;
-import com.github.blackjack200.ouranos.shaded.protocol.bedrock.codec.v575.Bedrock_v575;
-import com.github.blackjack200.ouranos.shaded.protocol.bedrock.codec.v589.Bedrock_v589;
+import oxy.geyser.reversion.ouranos.ProtocolInfo;
+import org.cloudburstmc.protocol.bedrock.codec.v575.Bedrock_v575;
+import org.cloudburstmc.protocol.bedrock.codec.v589.Bedrock_v589;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import lombok.Getter;

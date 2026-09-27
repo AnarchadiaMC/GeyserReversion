@@ -1,11 +1,11 @@
 package oxy.geyser.reversion;
 
-import com.github.blackjack200.ouranos.converter.*;
-import com.github.blackjack200.ouranos.data.ItemTypeInfo;
-import com.github.blackjack200.ouranos.session.OuranosSession;
-import com.github.blackjack200.ouranos.session.storage.BlockDictionaryStorage;
-import com.github.blackjack200.ouranos.shaded.protocol.bedrock.packet.BedrockPacket;
-import com.github.blackjack200.ouranos.shaded.protocol.bedrock.data.BlockPropertyData;
+import oxy.geyser.reversion.ouranos.converter.*;
+import oxy.geyser.reversion.ouranos.data.ItemTypeInfo;
+import oxy.geyser.reversion.ouranos.session.OuranosSession;
+import oxy.geyser.reversion.ouranos.session.storage.BlockDictionaryStorage;
+import org.cloudburstmc.protocol.bedrock.packet.BedrockPacket;
+import org.cloudburstmc.protocol.bedrock.data.BlockPropertyData;
 import org.cloudburstmc.nbt.NbtMap;
 import org.junit.jupiter.api.Test;
 import java.util.*;

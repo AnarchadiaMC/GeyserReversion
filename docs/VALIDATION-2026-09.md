@@ -47,11 +47,12 @@ local environment.
 ## Packaging and source checks
 
 The shaded plugin JAR and corresponding-source ZIP are reproducible archives
-(stable ordering and timestamps). The source release is allowlisted, expands
-the nested Ouranos/BedrockData source, carries the project and third-party
-licenses, and includes the exact dependency source JARs needed for the bundled
-work. It is rebuilt in a fresh directory without repository metadata before
-publication. Release SHA-256 values are published beside both artifacts.
+(stable ordering and timestamps). The source release is allowlisted, includes
+the integrated Ouranos and BedrockData sources and data, carries the project and
+third-party licenses, and includes the exact dependency source JARs needed for
+the bundled work. It is rebuilt in a fresh directory without repository
+metadata before publication. Release SHA-256 values are published beside both
+artifacts.
 
 ## Scope of the evidence
 

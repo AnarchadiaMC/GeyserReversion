@@ -1,10 +1,10 @@
 package oxy.geyser.reversion.util;
 
-import com.github.blackjack200.ouranos.converter.ItemTypeDictionary;
+import oxy.geyser.reversion.ouranos.converter.ItemTypeDictionary;
 import org.geysermc.geyser.registry.Registries;
-import com.github.blackjack200.ouranos.data.ItemTypeInfo;
+import oxy.geyser.reversion.ouranos.data.ItemTypeInfo;
 import java.util.HashMap;
-import com.github.blackjack200.ouranos.converter.BlockStateDictionary;
+import oxy.geyser.reversion.ouranos.converter.BlockStateDictionary;
 import org.geysermc.geyser.registry.BlockRegistries;
 
 /** Validate actual Geyser item runtime IDs against the bridge dictionary at startup. */
@@ -49,7 +49,7 @@ public final class BridgeMappingAudit {
         var states = new java.util.ArrayList<org.cloudburstmc.nbt.NbtMap>();
         for (var block : blocks.getBedrockRuntimeMap()) {
             if (block == null) throw new IllegalStateException("Missing bridge block runtime definition");
-            int stateHash = com.github.blackjack200.ouranos.utils.HashUtils.computeBlockStateHash(block.getState());
+            int stateHash = oxy.geyser.reversion.ouranos.utils.HashUtils.computeBlockStateHash(block.getState());
             if (block.getRuntimeId() != states.size() && block.getRuntimeId() != stateHash) {
                 throw new IllegalStateException("Unsupported bridge block runtime ID scheme");
             }

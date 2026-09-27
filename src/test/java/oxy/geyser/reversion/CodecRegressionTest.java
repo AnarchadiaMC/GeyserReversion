@@ -1,6 +1,6 @@
 package oxy.geyser.reversion;
 
-import com.github.blackjack200.ouranos.ProtocolInfo;
+import oxy.geyser.reversion.ouranos.ProtocolInfo;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import org.cloudburstmc.math.vector.Vector3i;

@@ -1,14 +1,14 @@
 package oxy.geyser.reversion;
 
-import com.github.blackjack200.ouranos.ProtocolInfo;
-import com.github.blackjack200.ouranos.converter.ItemTypeDictionary;
-import com.github.blackjack200.ouranos.session.SpecialOuranosSession;
-import com.github.blackjack200.ouranos.shaded.protocol.bedrock.packet.*;
-import com.github.blackjack200.ouranos.shaded.protocol.bedrock.data.*;
-import com.github.blackjack200.ouranos.shaded.protocol.bedrock.data.inventory.*;
-import com.github.blackjack200.ouranos.shaded.protocol.bedrock.data.inventory.crafting.*;
-import com.github.blackjack200.ouranos.shaded.protocol.bedrock.data.inventory.crafting.recipe.*;
-import com.github.blackjack200.ouranos.shaded.protocol.bedrock.data.inventory.descriptor.*;
+import oxy.geyser.reversion.ouranos.ProtocolInfo;
+import oxy.geyser.reversion.ouranos.converter.ItemTypeDictionary;
+import oxy.geyser.reversion.ouranos.session.SpecialOuranosSession;
+import org.cloudburstmc.protocol.bedrock.packet.*;
+import org.cloudburstmc.protocol.bedrock.data.*;
+import org.cloudburstmc.protocol.bedrock.data.inventory.*;
+import org.cloudburstmc.protocol.bedrock.data.inventory.crafting.*;
+import org.cloudburstmc.protocol.bedrock.data.inventory.crafting.recipe.*;
+import org.cloudburstmc.protocol.bedrock.data.inventory.descriptor.*;
 import org.cloudburstmc.math.vector.*;
 import org.junit.jupiter.api.*;
 import io.netty.buffer.*;
@@ -58,13 +58,13 @@ class GameplayTranslationTest {
         var components = new ItemComponentPacket();
         components.getItems().addAll(ItemTypeDictionary.getInstance(944).getEntries().entrySet()
                 .stream().map(e -> e.getValue().toDefinition(e.getKey())).toList());
-        var registry = com.github.blackjack200.ouranos.shaded.protocol.common.SimpleDefinitionRegistry
-                .<com.github.blackjack200.ouranos.shaded.protocol.bedrock.data.definitions.ItemDefinition>builder();
+        var registry = org.cloudburstmc.protocol.common.SimpleDefinitionRegistry
+                .<org.cloudburstmc.protocol.bedrock.data.definitions.ItemDefinition>builder();
         components.getItems().forEach(registry::add);
         var definitions = registry.build();
         session.getServerCodecHelper().setItemDefinitions(definitions);
         session.getClientCodecHelper().setItemDefinitions(
-                new com.github.blackjack200.ouranos.utils.ItemTypeDictionaryRegistry(definitions, protocol));
+                new oxy.geyser.reversion.ouranos.utils.ItemTypeDictionaryRegistry(definitions, protocol));
         return session;
     }
 
@@ -175,7 +175,7 @@ class GameplayTranslationTest {
             input.setRotation(Vector3f.ZERO); input.setPosition(Vector3f.ZERO); input.setMotion(Vector2f.ZERO);
             input.setAnalogMoveVector(Vector2f.ZERO); input.setInteractRotation(Vector2f.ZERO);
             input.setDelta(Vector3f.ZERO); input.setRawMoveVector(Vector2f.ZERO);
-            var use = new com.github.blackjack200.ouranos.shaded.protocol.bedrock.data.inventory.transaction.ItemUseTransaction();
+            var use = new org.cloudburstmc.protocol.bedrock.data.inventory.transaction.ItemUseTransaction();
             use.setItemInHand(item(protocol, "minecraft:chest", 1));
             input.setItemUseTransaction(use);
             var translated = (PlayerAuthInputPacket) session.translateServerbound(input);

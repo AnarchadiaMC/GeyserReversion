@@ -5,8 +5,8 @@
 
 package oxy.geyser.reversion.util;
 
-import com.github.blackjack200.ouranos.converter.ItemTypeDictionary;
-import com.github.blackjack200.ouranos.data.ItemTypeInfo;
+import oxy.geyser.reversion.ouranos.converter.ItemTypeDictionary;
+import oxy.geyser.reversion.ouranos.data.ItemTypeInfo;
 import org.cloudburstmc.protocol.bedrock.data.definitions.ItemDefinition;
 import org.cloudburstmc.protocol.bedrock.data.definitions.SimpleItemDefinition;
 import org.cloudburstmc.protocol.bedrock.data.inventory.ItemVersion;

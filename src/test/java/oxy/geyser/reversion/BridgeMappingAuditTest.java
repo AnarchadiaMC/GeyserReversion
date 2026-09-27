@@ -1,6 +1,6 @@
 package oxy.geyser.reversion;
 
-import com.github.blackjack200.ouranos.converter.ItemTypeDictionary;
+import oxy.geyser.reversion.ouranos.converter.ItemTypeDictionary;
 import org.cloudburstmc.protocol.bedrock.data.definitions.*;
 import org.cloudburstmc.protocol.common.DefinitionRegistry;
 import org.junit.jupiter.api.Test;

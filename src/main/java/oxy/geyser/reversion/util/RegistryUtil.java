@@ -1,7 +1,7 @@
 package oxy.geyser.reversion.util;
 
-import com.github.blackjack200.ouranos.shaded.protocol.bedrock.data.inventory.ItemVersion;
-import com.github.blackjack200.ouranos.utils.ItemTypeDictionaryRegistry;
+import org.cloudburstmc.protocol.bedrock.data.inventory.ItemVersion;
+import oxy.geyser.reversion.ouranos.utils.ItemTypeDictionaryRegistry;
 import org.cloudburstmc.protocol.bedrock.data.definitions.ItemDefinition;
 import org.cloudburstmc.protocol.bedrock.data.definitions.SimpleItemDefinition;
 import org.cloudburstmc.protocol.bedrock.packet.ItemComponentPacket;
@@ -26,14 +26,14 @@ public class RegistryUtil {
         }
 
         {
-            com.github.blackjack200.ouranos.shaded.protocol.common.SimpleDefinitionRegistry.Builder<com.github.blackjack200.ouranos.shaded.protocol.bedrock.data.definitions.ItemDefinition> builder = com.github.blackjack200.ouranos.shaded.protocol.common.SimpleDefinitionRegistry.<com.github.blackjack200.ouranos.shaded.protocol.bedrock.data.definitions.ItemDefinition>builder()
-                    .add(new com.github.blackjack200.ouranos.shaded.protocol.bedrock.data.definitions.SimpleItemDefinition("minecraft:empty", 0, false));
+            org.cloudburstmc.protocol.common.SimpleDefinitionRegistry.Builder<org.cloudburstmc.protocol.bedrock.data.definitions.ItemDefinition> builder = org.cloudburstmc.protocol.common.SimpleDefinitionRegistry.<org.cloudburstmc.protocol.bedrock.data.definitions.ItemDefinition>builder()
+                    .add(new org.cloudburstmc.protocol.bedrock.data.definitions.SimpleItemDefinition("minecraft:empty", 0, false));
 
             for (final ItemDefinition entry : packet.getItems()) {
-                builder.add(new com.github.blackjack200.ouranos.shaded.protocol.bedrock.data.definitions.SimpleItemDefinition(entry.getIdentifier(), entry.getRuntimeId(), ItemVersion.from(entry.getVersion().ordinal()), entry.isComponentBased(), entry.getComponentData()));
+                builder.add(new org.cloudburstmc.protocol.bedrock.data.definitions.SimpleItemDefinition(entry.getIdentifier(), entry.getRuntimeId(), ItemVersion.from(entry.getVersion().ordinal()), entry.isComponentBased(), entry.getComponentData()));
             }
 
-            com.github.blackjack200.ouranos.shaded.protocol.common.SimpleDefinitionRegistry<com.github.blackjack200.ouranos.shaded.protocol.bedrock.data.definitions.ItemDefinition> itemDefinitions = builder.build();
+            org.cloudburstmc.protocol.common.SimpleDefinitionRegistry<org.cloudburstmc.protocol.bedrock.data.definitions.ItemDefinition> itemDefinitions = builder.build();
             user.getServerCodecHelper().setItemDefinitions(itemDefinitions);
             user.getClientCodecHelper().setItemDefinitions(new ItemTypeDictionaryRegistry(itemDefinitions, user.getProtocolId()));
         }

@@ -15,7 +15,10 @@ java {
 
 repositories {
     mavenCentral()
-    maven {url = "https://repo.opencollab.dev/main/"}
+    // Hosts the Geyser/Cloudburst unique snapshot artifacts (protocol BetaX) and their sources.
+    // Fetches for timestamped versions such as 3.0.0.Beta13-20260824.114016-17 are served from
+    // the 3.0.0.Beta13-SNAPSHOT/ directory, which this repository exposes.
+    maven { url = "https://repo.opencollab.dev/main/" }
 }
 
 configurations {
@@ -25,72 +28,126 @@ configurations {
     }
 }
 
-// Ouranos is vendored in-tree; build its nested Gradle project directly.
-tasks.register('buildOuranos', Exec) {
-    workingDir 'Ouranos'
-    if (System.getProperty('os.name').toLowerCase().contains('windows')) {
-        commandLine 'cmd', '/c', 'gradlew.bat', 'clean', 'shadowJar', '--no-daemon'
-    } else {
-        commandLine './gradlew', 'clean', 'shadowJar', '--no-daemon'
-    }
-}
-
-// Make compileJava depend on building Ouranos first
-compileJava.dependsOn buildOuranos
-
-
 dependencies {
+    // Corresponding sources for the dependencies bundled into the shadow jar.
+    // Every entry below was verified to publish a resolvable ':sources' variant.
     correspondingDependencySources 'org.allaymc.stateupdater:common:0.1.1:sources'
     correspondingDependencySources 'org.allaymc.stateupdater:block-updater:1.21.110-R1:sources'
-    correspondingDependencySources 'org.cloudburstmc.protocol:bedrock-codec:3.0.0.Beta12-20260721.182844-29:sources'
-    correspondingDependencySources 'org.cloudburstmc.protocol:common:3.0.0.Beta12-20260721.182844-30:sources'
-    correspondingDependencySources 'org.cloudburstmc.protocol:bedrock-connection:3.0.0.Beta12-20260721.182844-30:sources'
+    correspondingDependencySources 'com.google.code.gson:gson:2.13.2:sources'
+    correspondingDependencySources 'cn.hutool:hutool-core:5.8.40:sources'
+    correspondingDependencySources 'com.fasterxml.jackson.core:jackson-annotations:2.17.0:sources'
+    correspondingDependencySources 'com.fasterxml.jackson.core:jackson-core:2.17.0:sources'
+    correspondingDependencySources 'com.fasterxml.jackson.core:jackson-databind:2.17.0:sources'
+    correspondingDependencySources 'com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.17.0:sources'
+    correspondingDependencySources 'org.yaml:snakeyaml:2.2:sources'
+    correspondingDependencySources 'net.lenni0451.classtransform:core:1.14.1:sources'
+    correspondingDependencySources 'net.lenni0451:Reflect:1.5.0:sources'
+    // Cloudburst fastutil publishes sources for all modules below.
+    correspondingDependencySources 'org.cloudburstmc.fastutil:core:8.5.15:sources'
+    correspondingDependencySources 'org.cloudburstmc.fastutil.sets:object-sets:8.5.15:sources'
+    correspondingDependencySources 'org.cloudburstmc.fastutil.sets:long-sets:8.5.15:sources'
+    correspondingDependencySources 'org.cloudburstmc.fastutil.sets:int-sets:8.5.15:sources'
+    correspondingDependencySources 'org.cloudburstmc.fastutil.maps:object-int-maps:8.5.15:sources'
+    correspondingDependencySources 'org.cloudburstmc.fastutil.maps:long-object-maps:8.5.15:sources'
+    correspondingDependencySources 'org.cloudburstmc.fastutil.maps:int-object-maps:8.5.15:sources'
+    correspondingDependencySources 'org.cloudburstmc.fastutil.commons:object-common:8.5.15:sources'
+    correspondingDependencySources 'org.cloudburstmc.fastutil.commons:long-common:8.5.15:sources'
+    correspondingDependencySources 'org.cloudburstmc.fastutil.commons:int-common:8.5.15:sources'
+    correspondingDependencySources 'org.cloudburstmc.protocol:bedrock-codec:3.0.0.Beta13-20260824.114016-17:sources'
+    correspondingDependencySources 'org.cloudburstmc.protocol:common:3.0.0.Beta13-20260824.114016-17:sources'
+    correspondingDependencySources 'org.cloudburstmc.protocol:bedrock-connection:3.0.0.Beta13-20260824.114016-17:sources'
+
     compileOnly("org.geysermc.geyser:core:2.11.2-20260910.131131-9") {
         exclude group: "com.google.code.gson", module: "gson"
     }
     // Geyser provides this at runtime; the extension directly uses its listener options.
     compileOnly("org.cloudburstmc.netty:netty-transport-raknet:1.1.0.CR1-20260820.174333-6")
+    // Provided by the Geyser runtime. Pinned to the exact Beta13 build that Geyser core 2.11.2
+    // depends on so the Beta13 API surface is the compile classpath (never bundled).
+    compileOnly("org.cloudburstmc.protocol:bedrock-codec:3.0.0.Beta13-20260824.114016-17")
+    compileOnly("org.cloudburstmc.protocol:common:3.0.0.Beta13-20260824.114016-17")
+    compileOnly("org.cloudburstmc.protocol:bedrock-connection:3.0.0.Beta13-20260824.114016-17")
     compileOnly("org.projectlombok:lombok:1.18.36")
     annotationProcessor("org.projectlombok:lombok:1.18.36")
 
-    // Use the in-tree Ouranos shadowJar built by buildOuranos.
-    implementation(files("Ouranos/build/libs/ouranos-1.0-all.jar"))
     testImplementation("org.geysermc.geyser:core:2.11.2-20260910.131131-9")
     testImplementation(platform("org.junit:junit-bom:5.11.4"))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+
+    // Bundled into the shadow jar.
     implementation("com.fasterxml.jackson.core:jackson-annotations:2.17.0")
     implementation("com.fasterxml.jackson.core:jackson-databind:2.17.0")
     implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.17.0")
     implementation("org.yaml:snakeyaml:2.2")
-
     implementation("net.lenni0451.classtransform:core:1.14.1")
     implementation("net.lenni0451:Reflect:1.5.0")
+    implementation("com.google.code.gson:gson:2.13.2")
+    implementation("cn.hutool:hutool-core:5.8.40")
+    implementation("org.allaymc.stateupdater:common:0.1.1")
+    implementation("org.allaymc.stateupdater:block-updater:1.21.110-R1")
+    implementation("org.cloudburstmc.fastutil:core:8.5.15")
+    implementation("org.cloudburstmc.fastutil.sets:object-sets:8.5.15")
+    implementation("org.cloudburstmc.fastutil.sets:long-sets:8.5.15")
+    implementation("org.cloudburstmc.fastutil.sets:int-sets:8.5.15")
+    implementation("org.cloudburstmc.fastutil.maps:object-int-maps:8.5.15")
+    implementation("org.cloudburstmc.fastutil.maps:long-object-maps:8.5.15")
+    implementation("org.cloudburstmc.fastutil.maps:int-object-maps:8.5.15")
+    implementation("org.cloudburstmc.fastutil.commons:object-common:8.5.15")
+    implementation("org.cloudburstmc.fastutil.commons:long-common:8.5.15")
+    implementation("org.cloudburstmc.fastutil.commons:int-common:8.5.15")
 }
 
 shadowJar {
     dependencies {
-        include(dependency(files("Ouranos/build/libs/ouranos-1.0-all.jar")))
-        include(dependency("com.fasterxml.jackson.core:jackson-databind:2.17.0"))
         include(dependency("com.fasterxml.jackson.core:jackson-annotations:2.17.0"))
         include(dependency("com.fasterxml.jackson.core:jackson-core:2.17.0"))
+        include(dependency("com.fasterxml.jackson.core:jackson-databind:2.17.0"))
         include(dependency("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.17.0"))
         include(dependency("org.yaml:snakeyaml:2.2"))
 
         include(dependency("net.lenni0451.classtransform:core:1.14.1"))
         include(dependency("net.lenni0451:Reflect:1.5.0"))
-
         include(dependency("org.ow2.asm:asm:9.8"))
         include(dependency("org.ow2.asm:asm-analysis:9.8"))
         include(dependency("org.ow2.asm:asm-commons:9.8"))
         include(dependency("org.ow2.asm:asm-tree:9.8"))
+
+        include(dependency("com.google.code.gson:gson:2.13.2"))
+        include(dependency("cn.hutool:hutool-core:5.8.40"))
+
+        include(dependency("org.allaymc.stateupdater:common:0.1.1"))
+        include(dependency("org.allaymc.stateupdater:block-updater:1.21.110-R1"))
+
+        include(dependency("org.cloudburstmc.fastutil:core:8.5.15"))
+        include(dependency("org.cloudburstmc.fastutil.sets:object-sets:8.5.15"))
+        include(dependency("org.cloudburstmc.fastutil.sets:long-sets:8.5.15"))
+        include(dependency("org.cloudburstmc.fastutil.sets:int-sets:8.5.15"))
+        include(dependency("org.cloudburstmc.fastutil.maps:object-int-maps:8.5.15"))
+        include(dependency("org.cloudburstmc.fastutil.maps:long-object-maps:8.5.15"))
+        include(dependency("org.cloudburstmc.fastutil.maps:int-object-maps:8.5.15"))
+        include(dependency("org.cloudburstmc.fastutil.commons:object-common:8.5.15"))
+        include(dependency("org.cloudburstmc.fastutil.commons:long-common:8.5.15"))
+        include(dependency("org.cloudburstmc.fastutil.commons:int-common:8.5.15"))
     }
+
+    // jackson-core/databind/dataformat-yaml ship META-INF/services entries under overlapping names.
+    mergeServiceFiles()
 
     relocate("com.fasterxml.jackson", "oxy.geyser.reversion.shaded.jackson")
     relocate('org.yaml.snakeyaml', 'oxy.geyser.reversion.shaded.yaml')
     relocate('org.objectweb.asm', 'oxy.geyser.reversion.shaded.asm')
     relocate('net.lenni0451.reflect', 'oxy.geyser.reversion.shaded.reflect')
     relocate('net.lenni0451.classtransform', 'oxy.geyser.reversion.shaded.classtransform')
+    relocate('com.google.gson', 'oxy.geyser.reversion.shaded.gson')
+    relocate('cn.hutool', 'oxy.geyser.reversion.shaded.hutool')
+    relocate('org.allaymc', 'oxy.geyser.reversion.shaded.allaymc')
+    // The Cloudburst fastutil fork still ships classes in the upstream it.unimi.dsi.fastutil
+    // package, so this is the relocation that actually shades them.
+    relocate('it.unimi.dsi.fastutil', 'oxy.geyser.reversion.shaded.fastutil')
+    // Inert with the coordinates above (no classes in this package), kept as the documented
+    // namespace for the Cloudburst fastutil artifacts.
+    relocate('org.cloudburstmc.fastutil', 'oxy.geyser.reversion.shaded.fastutil')
 }
 
 modrinth {
@@ -118,14 +175,8 @@ tasks.named('test') {
 }
 
 processResources {
+    // Ouranos, BedrockData and Schema licenses already live in src/main/resources/META-INF/licenses.
     from('LICENSE') { into 'META-INF/licenses'; rename { 'GeyserReversion-GPL-3.0.txt' } }
-    from('Ouranos/LICENSE') { into 'META-INF/licenses'; rename { 'Ouranos-AGPL-3.0.txt' } }
-    from('Ouranos/src/main/resources/vanilla/LICENSE') {
-        into 'META-INF/licenses'; rename { 'BedrockData-LGPL-2.1.txt' }
-    }
-    from('Ouranos/src/main/resources/schema/LICENSE') {
-        into 'META-INF/licenses'; rename { 'Schema-CC0-1.0.txt' }
-    }
     from('THIRD_PARTY_NOTICES.md') { into 'META-INF' }
 }
 
@@ -143,11 +194,6 @@ tasks.register('sourceRelease', Zip) {
         include 'src/**', 'docs/**', 'gradle/**', 'gradlew', 'gradlew.bat'
         include 'build.gradle', 'settings.gradle', '.gitignore', '.gitattributes', 'LICENSE'
         include 'README.md', 'UPSTREAM_ATTRIBUTION.md', 'THIRD_PARTY_NOTICES.md'
-    }
-    from('Ouranos') {
-        into 'Ouranos'
-        include 'src/**', 'gradle/**', 'gradlew', 'gradlew.bat', '*.gradle.kts', '*.md', 'LICENSE'
-        exclude '**/.git', '**/.github/**'
     }
     preserveFileTimestamps = false
     reproducibleFileOrder = true

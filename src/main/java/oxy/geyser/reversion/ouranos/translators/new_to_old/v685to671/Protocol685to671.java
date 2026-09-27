@@ -1,0 +1,15 @@
+package oxy.geyser.reversion.ouranos.translators.new_to_old.v685to671;
+
+import oxy.geyser.reversion.ouranos.base.ProtocolToProtocol;
+import org.cloudburstmc.protocol.bedrock.data.inventory.ContainerType;
+import org.cloudburstmc.protocol.bedrock.packet.ContainerClosePacket;
+
+public class Protocol685to671 extends ProtocolToProtocol {
+    @Override
+    protected void registerProtocol() {
+        this.registerServerbound(ContainerClosePacket.class, wrapped -> {
+            final ContainerClosePacket packet = (ContainerClosePacket) wrapped.getPacket();
+            packet.setType(ContainerType.NONE);
+        });
+    }
+}

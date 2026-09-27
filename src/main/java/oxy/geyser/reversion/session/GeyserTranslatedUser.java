@@ -1,6 +1,6 @@
 package oxy.geyser.reversion.session;
 
-import com.github.blackjack200.ouranos.session.SpecialOuranosSession;
+import oxy.geyser.reversion.ouranos.session.SpecialOuranosSession;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import lombok.Getter;
@@ -66,7 +66,7 @@ public class GeyserTranslatedUser extends SpecialOuranosSession {
     }
 
     @Override
-    public void sendUpstreamPacket(com.github.blackjack200.ouranos.shaded.protocol.bedrock.packet.BedrockPacket bedrockPacket) {
+    public void sendUpstreamPacket(org.cloudburstmc.protocol.bedrock.packet.BedrockPacket bedrockPacket) {
         final ByteBuf input = Unpooled.buffer();
 
         BedrockPacket packet = null;
@@ -90,7 +90,7 @@ public class GeyserTranslatedUser extends SpecialOuranosSession {
     }
 
     @Override
-    public void sendDownstreamPacket(com.github.blackjack200.ouranos.shaded.protocol.bedrock.packet.BedrockPacket bedrockPacket) {
+    public void sendDownstreamPacket(org.cloudburstmc.protocol.bedrock.packet.BedrockPacket bedrockPacket) {
         final ByteBuf input = Unpooled.buffer();
 
         BedrockPacket packet = null;

@@ -2,10 +2,6 @@ build/
 .gradle/
 .idea/
 .vscode/
-# Vendored Ouranos nested build outputs.
-Ouranos/build/
-Ouranos/.gradle/
-Ouranos/.idea/
 # Runtime files and credentials never belong in public source releases.
 logs/
 extensions/
