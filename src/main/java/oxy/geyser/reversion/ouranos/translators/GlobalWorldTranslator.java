@@ -109,6 +109,11 @@ public class GlobalWorldTranslator extends ProtocolToProtocol {
         this.registerClientbound(LevelChunkPacket.class, wrapped -> {
             final LevelChunkPacket packet = (LevelChunkPacket) wrapped.getPacket();
 
+            // Payloadless cached chunks are handled/dropped by the version translators downstream; leave packet untouched.
+            if (packet.getData() == null || !packet.getData().isReadable()) {
+                return;
+            }
+
             final ByteBuf from = packet.getData();
             final ByteBuf to = AbstractByteBufAllocator.DEFAULT.buffer(from.readableBytes()).touch();
             try {
@@ -126,7 +131,7 @@ public class GlobalWorldTranslator extends ProtocolToProtocol {
             final SubChunkPacket packet = (SubChunkPacket) wrapped.getPacket();
 
             for (final SubChunkData subChunk : packet.getSubChunks()) {
-                if (subChunk.getData().readableBytes() > 0) {
+                if (subChunk.getData() != null && subChunk.getData().readableBytes() > 0) {
                     final ByteBuf from = subChunk.getData();
                     final ByteBuf to = AbstractByteBufAllocator.DEFAULT.buffer(from.readableBytes());
                     try {
