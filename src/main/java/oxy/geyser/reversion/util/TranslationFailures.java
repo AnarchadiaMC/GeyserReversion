@@ -12,7 +12,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class TranslationFailures {
     public static final String FAILURE_LIMIT_PROPERTY = "Geyser.Reversion.TranslationFailureLimit";
 
-    private static final int DEFAULT_FAILURE_LIMIT = 3;
+    private static final int DEFAULT_FAILURE_LIMIT = 64;
     private static final Set<String> CRITICAL = Set.of("START_GAME", "PLAYER_AUTH_INPUT");
     private static final String CRITICAL_DISCONNECT_MESSAGE = "This Bedrock version encountered an incompatible gameplay packet. "
             + "Please update Minecraft; the server logged the affected packet type.";

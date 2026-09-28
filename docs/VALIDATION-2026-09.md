@@ -8,7 +8,8 @@
 >   `Protocol1001to944` as the downgrade step to 944;
 > - `Geyser 2.11.2 build 1235` — the build is now pinned to Geyser
 >   `2.11.3-20260925.135253-13` (server build 2.11.3-b1247, git `63a4e2b79`) with
->   Cloudburst Protocol `3.0.0.Beta13-20260927.160519-32`, both pinned exactly in
+>   Cloudburst Protocol `3.0.0.Beta13-20260917.001841-27` (the exact build that
+>   Geyser core POM resolves), both pinned exactly in
 >   `build.gradle`;
 > - `54 registered protocols` — 58 are registered now, 332 through 1001, after
 >   adding 332, 340, 354 and 1001.

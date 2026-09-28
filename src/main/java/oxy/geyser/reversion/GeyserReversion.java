@@ -144,8 +144,7 @@ public class GeyserReversion implements Extension {
                     + " (newest registered schema: " + newestRegisteredSchemaId() + "). Item renames newer than the"
                     + " target version are polyfilled for older clients; see docs/LEGACY-DATA.md.");
             // Restart Geyser's Bedrock listener so translated sessions use our packet handler.
-            GeyserApiCompat.shutdownServer(server);
-
+            // Geyser's listener is shut down only after the failure-prone setup below has succeeded.
             Integer bedrockThreadCount = Integer.getInteger("Geyser.BedrockNetworkThreads");
             if (bedrockThreadCount == null) {
                 // Copy the code from Netty's default thread count fallback
@@ -185,6 +184,7 @@ public class GeyserReversion implements Extension {
             final GeyserConfig config = geyser.config();
             final int bedrockPort = GeyserApiCompat.bedrockPort(config);
             final InetSocketAddress bindAddress = new InetSocketAddress(config.bedrock().address(), bedrockPort);
+            GeyserApiCompat.shutdownServer(server);
             final ChannelFuture[] futures = GeyserApiCompat.bootstrapFutures(server);
             for (int i = 0; i < futures.length; i++) {
                 ChannelFuture future = bootstrap.bind(bindAddress);
@@ -267,11 +267,6 @@ public class GeyserReversion implements Extension {
         }
     }
 
-    /**
-     * Highest item id/meta upgrade schema id shipped in {@code schema/id_meta_upgrade_schema}.
-     * Schema files are named {@code <4-digit id>_*.json}, so the id space is probed directly
-     * (directory listing is not available from inside a jar). Used only for startup diagnostics.
-     */
     /**
      * Highest item id/meta upgrade schema id referenced by a registered protocol. Newer schemas are
      * never reverted for those targets, so their item renames are polyfilled for older clients.

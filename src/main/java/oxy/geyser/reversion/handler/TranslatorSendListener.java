@@ -46,6 +46,24 @@ public final class TranslatorSendListener extends UpstreamSession {
     }
 
     @Override
+    public void queuePostStartGamePacket(@NonNull BedrockPacket packet) {
+        // UpstreamSession.sendPostStartGamePackets flushes through the raw Bedrock session field,
+        // bypassing sendPacket, so packets must be translated before they are queued.
+        if (packet instanceof ItemComponentPacket components) {
+            RegistryUtil.onItemComponent(this.user, components);
+        }
+        if (this.user != null) {
+            final BedrockPacket translated = this.translate(packet);
+            if (translated != null) {
+                super.queuePostStartGamePacket(translated);
+            }
+            return;
+        }
+
+        super.queuePostStartGamePacket(packet);
+    }
+
+    @Override
     public void sendPacketImmediately(@NonNull BedrockPacket packet) {
         if (packet instanceof ItemComponentPacket components) {
             RegistryUtil.onItemComponent(this.user, components);

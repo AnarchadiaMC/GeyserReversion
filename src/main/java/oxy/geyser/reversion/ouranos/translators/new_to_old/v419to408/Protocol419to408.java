@@ -64,7 +64,7 @@ public class Protocol419to408 extends ProtocolToProtocol {
         });
         this.registerClientbound(AddEntityPacket.class, wrapped -> {
             final AddEntityPacket packet = (AddEntityPacket) wrapped.getPacket();
-            wrapped.session().get(EntityTracker_v419.class).cache(packet.getRuntimeEntityId(), packet.getUniqueEntityId(), packet.getPosition(), Vector3f.from(packet.getRotation().getX(), packet.getRotation().getY(), packet.getRotation().getY()));
+            wrapped.session().get(EntityTracker_v419.class).cache(packet.getRuntimeEntityId(), packet.getUniqueEntityId(), packet.getPosition(), Vector3f.from(packet.getRotation().getX(), packet.getRotation().getY(), packet.getHeadRotation()));
         });
         this.registerClientbound(MovePlayerPacket.class, wrapped -> {
             final MovePlayerPacket packet = (MovePlayerPacket) wrapped.getPacket();

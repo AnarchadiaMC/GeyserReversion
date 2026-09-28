@@ -80,7 +80,7 @@ public class Protocol388to361 extends ProtocolToProtocol {
             }
         });
 
-        this.registerServerbound(StartGamePacket.class, wrapped -> {
+        this.registerClientbound(StartGamePacket.class, wrapped -> {
             final StartGamePacket packet = (StartGamePacket) wrapped.getPacket();
 
             packet.setBlockPalette(new NbtList<>(NbtType.COMPOUND, BlockStateDictionary.getInstance(wrapped.getOutput()).getKnownStates().stream().map((e) -> {

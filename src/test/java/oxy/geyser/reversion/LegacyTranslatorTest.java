@@ -684,7 +684,7 @@ class LegacyTranslatorTest {
         packet.setJumpStrength(4.5f);
         packet.setHealth(5.5f);
         packet.setHunger(6.5f);
-        packet.setUniqueEntityId(13L);
+        packet.setRuntimeEntityId(13L);
 
         final MovementPredictionSyncPacket decoded = serverboundWire944(session, packet);
         assertEquals(Vector3f.ONE, decoded.getBoundingBox());
@@ -694,7 +694,7 @@ class LegacyTranslatorTest {
         assertEquals(4.5f, decoded.getJumpStrength());
         assertEquals(5.5f, decoded.getHealth());
         assertEquals(6.5f, decoded.getHunger());
-        assertEquals(13L, decoded.getUniqueEntityId());
+        assertEquals(13L, decoded.getRuntimeEntityId());
         assertEquals(0f, decoded.getUnknown1());
         assertEquals(0f, decoded.getUnknown2());
         assertEquals(0f, decoded.getUnknown3());

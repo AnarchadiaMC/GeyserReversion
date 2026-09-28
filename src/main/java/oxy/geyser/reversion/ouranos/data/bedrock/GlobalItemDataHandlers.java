@@ -7,17 +7,16 @@ import oxy.geyser.reversion.ouranos.data.bedrock.item.upgrade.ItemIdMetaUpgrader
 import oxy.geyser.reversion.ouranos.converter.ItemTypeDictionary;
 import lombok.SneakyThrows;
 
-import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 public final class GlobalItemDataHandlers {
-    private static ItemDataUpgrader itemDataUpgrader = null;
-    private static Map<Integer, ItemIdMetaDowngrader> downgrader = new HashMap<>();
+    private static volatile ItemDataUpgrader itemDataUpgrader = null;
+    private static final Map<Integer, ItemIdMetaDowngrader> DOWNGRADERS = new ConcurrentHashMap<>();
 
 
     @SneakyThrows
-    public static ItemDataUpgrader getUpgrader() {
+    public static synchronized ItemDataUpgrader getUpgrader() {
         if (itemDataUpgrader == null) {
             itemDataUpgrader = new ItemDataUpgrader(
                     new ItemIdMetaUpgrader(ItemIdMetaUpgradeSchemaUtils.loadSchemas("schema/id_meta_upgrade_schema", 1 << 30).values())
@@ -37,10 +36,8 @@ public final class GlobalItemDataHandlers {
     }
 
     public static ItemIdMetaDowngrader getItemIdMetaDowngrader(int protocolId) {
-        if (!downgrader.containsKey(protocolId)) {
-            downgrader.put(protocolId, new ItemIdMetaDowngrader(ItemTypeDictionary.getInstance(protocolId), getSchemaId(protocolId)));
-        }
-        return downgrader.get(protocolId);
+        return DOWNGRADERS.computeIfAbsent(protocolId,
+                id -> new ItemIdMetaDowngrader(ItemTypeDictionary.getInstance(id), getSchemaId(id)));
     }
 }
 

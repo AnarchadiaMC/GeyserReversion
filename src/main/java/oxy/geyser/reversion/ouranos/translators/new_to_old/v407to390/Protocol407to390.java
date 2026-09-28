@@ -91,6 +91,9 @@ public class Protocol407to390 extends ProtocolToProtocol {
                         var container = storage.getInventories().get(id);
                         if (container != null) {
                             for (var item : slot.getItems()) {
+                                if (item.getSlot() < 0 || item.getSlot() >= container.size()) {
+                                    continue;
+                                }
                                 container.set(item.getSlot(), container.get(item.getSlot()).toBuilder().count(item.getCount()).damage(item.getDurabilityCorrection()).usingNetId(true).netId(item.getStackNetworkId()).build());
                             }
                         }
@@ -129,8 +132,15 @@ public class Protocol407to390 extends ProtocolToProtocol {
 
             // TODO: Refactor me, this is literally unreadable.... well not really but it could be better.
 
-            var source = storage.getInventories().get(a.getSource().getContainerId()).get(a.getSlot());
-            var destination = storage.getInventories().get(b.getSource().getContainerId()).get(b.getSlot());
+            var sourceInventory = storage.getInventories().get(a.getSource().getContainerId());
+            var destinationInventory = storage.getInventories().get(b.getSource().getContainerId());
+            if (sourceInventory == null || destinationInventory == null
+                    || a.getSlot() < 0 || a.getSlot() >= sourceInventory.size()
+                    || b.getSlot() < 0 || b.getSlot() >= destinationInventory.size()) {
+                return;
+            }
+            var source = sourceInventory.get(a.getSlot());
+            var destination = destinationInventory.get(b.getSlot());
             if (!source.isNull()) {
                 var count = Math.abs(source.getCount() - a.getToItem().getCount());
                 if (destination.isNull()) {

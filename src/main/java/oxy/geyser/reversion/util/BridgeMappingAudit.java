@@ -5,14 +5,17 @@ import org.cloudburstmc.protocol.bedrock.data.definitions.ItemDefinition;
 import org.cloudburstmc.protocol.common.DefinitionRegistry;
 import org.geysermc.geyser.registry.BlockRegistries;
 import org.geysermc.geyser.registry.Registries;
+import org.geysermc.geyser.registry.type.ItemMappings;
 import oxy.geyser.reversion.GeyserReversion;
 import oxy.geyser.reversion.ouranos.converter.BlockStateDictionary;
 import oxy.geyser.reversion.ouranos.converter.ItemTypeDictionary;
 import oxy.geyser.reversion.ouranos.data.ItemTypeInfo;
 import oxy.geyser.reversion.ouranos.utils.HashUtils;
 
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Map;
 import java.util.Set;
 import java.util.logging.Logger;
 
@@ -50,8 +53,11 @@ public final class BridgeMappingAudit {
         // Build the INTERNAL bridge input dictionary from the actual Geyser definitions.
         // Never change any translated legacy client's stock dictionary.
         var declared = new HashMap<String, ItemTypeInfo>();
-        for (var definition : geyserItems.getItemDefinitions().values()) {
-            if (geyserItems.getNonVanillaCustomItemIds().contains(definition.getRuntimeId())) {
+        var geyserDefinitions = itemDefinitions(geyserItems);
+        var nonVanillaCustomItemIds = nonVanillaCustomItemIds(geyserItems);
+        for (Object value : geyserDefinitions.values()) {
+            var definition = (ItemDefinition) value;
+            if (nonVanillaCustomItemIds.contains(definition.getRuntimeId())) {
                 continue; // Preserve separately negotiated custom ItemComponent entries.
             }
             declared.put(definition.getIdentifier(), new ItemTypeInfo(definition.getRuntimeId(),
@@ -131,7 +137,7 @@ public final class BridgeMappingAudit {
         var knownStates = preImage.getKnownStates();
         for (int id = 0; id < knownStates.size(); id++) {
             var entry = knownStates.get(id);
-            var definition = blocks.getDefinition(entry.rawState());
+            var definition = blocks.getDefinition(networkStateKey(entry.rawState()));
             if (definition == null || definition.getRuntimeId() != id) {
                 mismatched++;
                 if (mismatched <= MAX_REPORTED_MISMATCHES) {
@@ -154,6 +160,50 @@ public final class BridgeMappingAudit {
     private static void requireFundamentalItems(Set<String> identifiers, String source) {
         if (!identifiers.contains("minecraft:chest") || !identifiers.contains("minecraft:crafting_table")) {
             throw new IllegalStateException(source + " bridge is missing fundamental item definitions");
+        }
+    }
+
+    /**
+     * Geyser strips version/name_hash/network_id/block_id from every state before it keys its state
+     * registry (BlockRegistryPopulator), so the raw pre-image NBT must be reduced the same way to
+     * be found. The item getters are called reflectively because Geyser's method descriptors use
+     * fastutil types, which the shadow jar relocates and thus cannot link against the Geyser class.
+     */
+    private static NbtMap networkStateKey(NbtMap rawState) {
+        var builder = rawState.toBuilder();
+        builder.remove("version");
+        builder.remove("name_hash");
+        builder.remove("network_id");
+        builder.remove("block_id");
+        return builder.build();
+    }
+
+    private static final Method GET_ITEM_DEFINITIONS = itemMappingsMethod("getItemDefinitions");
+    private static final Method GET_NON_VANILLA_CUSTOM_ITEM_IDS = itemMappingsMethod("getNonVanillaCustomItemIds");
+
+    private static Method itemMappingsMethod(String name) {
+        try {
+            var method = ItemMappings.class.getMethod(name);
+            method.setAccessible(true);
+            return method;
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException("Geyser item registry no longer exposes " + name, e);
+        }
+    }
+
+    private static Map<?, ?> itemDefinitions(ItemMappings itemMappings) {
+        return (Map<?, ?>) invoke(GET_ITEM_DEFINITIONS, itemMappings);
+    }
+
+    private static Set<?> nonVanillaCustomItemIds(ItemMappings itemMappings) {
+        return (Set<?>) invoke(GET_NON_VANILLA_CUSTOM_ITEM_IDS, itemMappings);
+    }
+
+    private static Object invoke(Method method, ItemMappings itemMappings) {
+        try {
+            return method.invoke(itemMappings);
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException("Unable to read Geyser item registry via " + method.getName(), e);
         }
     }
 

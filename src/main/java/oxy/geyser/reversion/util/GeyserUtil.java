@@ -15,8 +15,7 @@ public class GeyserUtil {
 
     public static boolean hook(final GeyserSession session) {
         try {
-            injectCloudburstUpstream(session, findCloudburstSession(session));
-            return true;
+            return injectCloudburstUpstream(session, findCloudburstSession(session));
         } catch (ReflectiveOperationException | RuntimeException e) {
             GeyserReversion.LOGGER.warning("Failed to hook translated upstream session; disconnecting client. Cause: "
                     + e.getClass().getSimpleName() + (e.getMessage() != null ? ": " + e.getMessage() : ""));
@@ -27,15 +26,16 @@ public class GeyserUtil {
         }
     }
 
-    private static void injectCloudburstUpstream(final GeyserSession session, final BedrockServerSession downstream) throws ReflectiveOperationException {
+    private static boolean injectCloudburstUpstream(final GeyserSession session, final BedrockServerSession downstream) throws ReflectiveOperationException {
         final Field upstream = GeyserSession.class.getDeclaredField("upstream");
         upstream.setAccessible(true);
 
         final TranslatorPacketHandler handler = (TranslatorPacketHandler) downstream.getPacketHandler();
         if (handler.getUser() == null) {
-            return;
+            return false;
         }
         upstream.set(session, new TranslatorSendListener(handler.getUser(), downstream, (UpstreamSession) upstream.get(session)));
+        return true;
     }
 
     private static BedrockServerSession findCloudburstSession(final GeyserSession connection) throws ReflectiveOperationException {

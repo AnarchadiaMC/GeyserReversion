@@ -16,7 +16,7 @@ java {
 repositories {
     mavenCentral()
     // Hosts the Geyser/Cloudburst unique snapshot artifacts (protocol BetaX) and their sources.
-    // Fetches for timestamped versions such as 3.0.0.Beta13-20260927.160519-32 are served from
+    // Fetches for timestamped versions such as 3.0.0.Beta13-20260917.001841-27 are served from
     // the 3.0.0.Beta13-SNAPSHOT/ directory, which this repository exposes.
     maven { url = "https://repo.opencollab.dev/main/" }
 }
@@ -34,7 +34,7 @@ repositories {
 // three org/cloudburstmc/protocol modules) and update every reference below in one commit, then
 // re-run `gradlew printResolvedPins` and the test suite.
 def geyserPin = '2.11.3-20260925.135253-13'
-def cloudburstProtocolPin = '3.0.0.Beta13-20260927.160519-32'
+def cloudburstProtocolPin = '3.0.0.Beta13-20260917.001841-27'
 
 configurations {
     correspondingDependencySources {
@@ -96,8 +96,9 @@ dependencies {
     compileOnly("org.geysermc.geyser:core:${geyserPin}") {
         exclude group: "com.google.code.gson", module: "gson"
     }
-    // Geyser provides this at runtime; the extension directly uses its listener options.
-    compileOnly("org.cloudburstmc.netty:netty-transport-raknet:1.1.0.CR1-20260820.174333-6")
+    // Geyser provides this at runtime; versions match the netty-transport-raknet build declared
+    // by the Geyser core POM above.
+    compileOnly("org.cloudburstmc.netty:netty-transport-raknet:2.0.0.CR3-20260916.135337-10")
     // Provided by the Geyser runtime. Pinned to the exact Beta13 build that Geyser core
     // ${geyserPin} depends on so the Beta13 API surface is the compile classpath (never bundled).
     compileOnly("org.cloudburstmc.protocol:bedrock-codec:${cloudburstProtocolPin}")
