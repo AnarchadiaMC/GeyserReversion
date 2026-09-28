@@ -25,23 +25,19 @@ import org.geysermc.geyser.api.event.lifecycle.GeyserPreInitializeEvent;
 import org.geysermc.geyser.api.extension.Extension;
 import org.geysermc.geyser.api.extension.ExtensionLogger;
 import org.geysermc.geyser.configuration.GeyserConfig;
-import org.geysermc.geyser.network.GameProtocol;
-import org.geysermc.geyser.network.netty.Bootstraps;
-import org.geysermc.geyser.network.netty.GeyserServer;
-import org.geysermc.geyser.network.netty.handler.RakConnectionRequestHandler;
-import org.geysermc.geyser.network.netty.handler.RakPingHandler;
 import org.geysermc.mcprotocollib.network.helper.TransportHelper;
 import oxy.geyser.reversion.config.Config;
 import oxy.geyser.reversion.config.ConfigLoader;
 import oxy.geyser.reversion.handler.init.TranslatorServerInitializer;
 import oxy.geyser.reversion.ouranos.ProtocolInfo;
+import oxy.geyser.reversion.ouranos.data.bedrock.GlobalItemDataHandlers;
 import oxy.geyser.reversion.transformer.BaseBedrockCodecHelperTransformer;
 import oxy.geyser.reversion.util.BridgeCodecSelector;
 import oxy.geyser.reversion.util.BridgeMappingAudit;
 import oxy.geyser.reversion.util.ClassLoaderPriorityUtil;
+import oxy.geyser.reversion.util.GeyserApiCompat;
 import oxy.geyser.reversion.util.GeyserExtensionClassProvider;
 
-import java.lang.reflect.Field;
 import java.net.InetSocketAddress;
 import java.util.Optional;
 
@@ -134,30 +130,21 @@ public class GeyserReversion implements Extension {
         EventLoopGroup childGroup = null;
         TranslatorServerInitializer serverInitializer = null;
         try {
-            final Field bootstrapFuturesField;
-            final Field groupField;
-            final Field childGroupField;
-            final Field playerGroupField;
-            try {
-                bootstrapFuturesField = GeyserServer.class.getDeclaredField("bootstrapFutures");
-                bootstrapFuturesField.setAccessible(true);
-                groupField = GeyserServer.class.getDeclaredField("group");
-                groupField.setAccessible(true);
-                childGroupField = GeyserServer.class.getDeclaredField("childGroup");
-                childGroupField.setAccessible(true);
-                playerGroupField = GeyserServer.class.getDeclaredField("playerGroup");
-                playerGroupField.setAccessible(true);
-            } catch (ReflectiveOperationException e) {
-                LOGGER.severe("Cannot access Geyser server internals for this Geyser version; disabling GeyserReversion.", e);
-                event.extensionManager().disable(this);
-                return;
-            }
+            Object server = GeyserApiCompat.getGeyserServer(geyser);
+            // Pre-shutdown accessibility probe: this read happens while Geyser's own listener is still up,
+            // so a moved field fails here with a precise message instead of after shutdownServer().
+            ChannelFuture[] preShutdownFutures = GeyserApiCompat.bootstrapFutures(server);
+            LOGGER.debug("Geyser's Bedrock listener currently owns " + preShutdownFutures.length + " channel future(s).");
 
             BRIDGE_GEYSER_CODEC = bridge.get();
             LOGGER.info("Using Bedrock bridge codec " + BRIDGE_GEYSER_CODEC.getMinecraftVersion()
                     + " (" + BRIDGE_GEYSER_CODEC.getProtocolVersion() + ") for translated clients.");
+            LOGGER.info("Bridge item-id/meta schema: protocol " + BRIDGE_GEYSER_CODEC.getProtocolVersion()
+                    + " -> schema " + GlobalItemDataHandlers.getSchemaId(BRIDGE_GEYSER_CODEC.getProtocolVersion())
+                    + " (newest registered schema: " + newestRegisteredSchemaId() + "). Item renames newer than the"
+                    + " target version are polyfilled for older clients; see docs/LEGACY-DATA.md.");
             // Restart Geyser's Bedrock listener so translated sessions use our packet handler.
-            geyser.getGeyserServer().shutdown();
+            GeyserApiCompat.shutdownServer(server);
 
             Integer bedrockThreadCount = Integer.getInteger("Geyser.BedrockNetworkThreads");
             if (bedrockThreadCount == null) {
@@ -165,7 +152,7 @@ public class GeyserReversion implements Extension {
                 bedrockThreadCount = Math.max(1, SystemPropertyUtil.getInt("io.netty.eventLoopThreads", NettyRuntime.availableProcessors() * 2));
             }
 
-            group = TRANSPORT.eventLoopGroupFactory().apply(Bootstraps.isReusePortAvailable() ? Integer.getInteger("Geyser.ListenCount", 1) : 1, new DefaultThreadFactory("GeyserServer", true));
+            group = TRANSPORT.eventLoopGroupFactory().apply(GeyserApiCompat.isReusePortAvailable() ? Integer.getInteger("Geyser.ListenCount", 1) : 1, new DefaultThreadFactory("GeyserServer", true));
             childGroup = TRANSPORT.eventLoopGroupFactory().apply(bedrockThreadCount, new DefaultThreadFactory("GeyserServerChild", true));
 
             int rakPacketLimit = positivePropOrDefault("Geyser.RakPacketLimit", DEFAULT_PACKET_LIMIT);
@@ -193,21 +180,23 @@ public class GeyserReversion implements Extension {
                             rakRateLimitingDisabled ? null : new DefaultRakServerThrottle(maxConnectionsPerAddress, 4_000, 3))
                     .childHandler(serverInitializer);
 
-            Bootstraps.setupBootstrap(bootstrap, TRANSPORT);
+            GeyserApiCompat.setupBootstrap(bootstrap, TRANSPORT);
 
             final GeyserConfig config = geyser.config();
-            final ChannelFuture[] futures = (ChannelFuture[]) bootstrapFuturesField.get(geyser.getGeyserServer());
+            final int bedrockPort = GeyserApiCompat.bedrockPort(config);
+            final InetSocketAddress bindAddress = new InetSocketAddress(config.bedrock().address(), bedrockPort);
+            final ChannelFuture[] futures = GeyserApiCompat.bootstrapFutures(server);
             for (int i = 0; i < futures.length; i++) {
-                ChannelFuture future = bootstrap.bind(new InetSocketAddress(config.bedrock().address(), config.bedrock().port()));
-                modifyHandlers(future);
+                ChannelFuture future = bootstrap.bind(bindAddress);
+                modifyHandlers(future, bindAddress);
                 futures[i] = future;
             }
 
-            Bootstraps.allOf(futures).join();
+            GeyserApiCompat.allOf(futures).join();
 
-            groupField.set(geyser.getGeyserServer(), group);
-            childGroupField.set(geyser.getGeyserServer(), childGroup);
-            playerGroupField.set(geyser.getGeyserServer(), serverInitializer.getEventLoopGroup());
+            GeyserApiCompat.setGroup(server, group);
+            GeyserApiCompat.setChildGroup(server, childGroup);
+            GeyserApiCompat.setPlayerGroup(server, serverInitializer.getEventLoopGroup());
         } catch (RuntimeException | LinkageError e) {
             LOGGER.severe("Failed to restart Geyser's Bedrock listener; disabling GeyserReversion.", e);
             try {
@@ -228,7 +217,7 @@ public class GeyserReversion implements Extension {
         }
     }
 
-    private void modifyHandlers(ChannelFuture future) {
+    private void modifyHandlers(ChannelFuture future, InetSocketAddress bindAddress) {
         future.addListener((ChannelFutureListener) result -> {
             if (!result.isSuccess()) {
                 LOGGER.warning("Not modifying handlers due to exception: " + result.cause());
@@ -236,11 +225,24 @@ public class GeyserReversion implements Extension {
             }
 
             Channel channel = result.channel();
-            channel.pipeline()
-                    .addBefore(RakServerOfflineHandler.NAME, RakConnectionRequestHandler.NAME,
-                            new RakConnectionRequestHandler(GeyserImpl.getInstance().getGeyserServer()))
-                    .addAfter(RakServerOfflineHandler.NAME, RakPingHandler.NAME,
-                            new RakPingHandler(GeyserImpl.getInstance().getGeyserServer()));
+            try {
+                GeyserImpl geyser = GeyserImpl.getInstance();
+                Object server = GeyserApiCompat.getGeyserServer(geyser);
+                channel.pipeline()
+                        .addBefore(RakServerOfflineHandler.NAME, GeyserApiCompat.rakConnectionRequestHandlerName(),
+                                GeyserApiCompat.createRakConnectionRequestHandler(server))
+                        .addAfter(RakServerOfflineHandler.NAME, GeyserApiCompat.rakPingHandlerName(),
+                                GeyserApiCompat.createRakPingHandler(geyser, server));
+            } catch (RuntimeException | LinkageError e) {
+                // This runs inside a Netty event-loop callback, so neither the event nor the extension
+                // manager is reachable to disable GeyserReversion from here: an unhandled throwable
+                // would be swallowed by the future and silently leave a bound-but-untranslated port.
+                LOGGER.severe("Failed to install Bedrock listeners; disabling GeyserReversion.", e);
+                LOGGER.severe("Bedrock listener " + bindAddress + " on channel " + channel
+                        + " is running without GeyserReversion's handlers; Bedrock clients on that port will not be "
+                        + "translated. GeyserReversion could not disable itself from this Netty callback - restart "
+                        + "Geyser after fixing the error above.");
+            }
         });
     }
 
@@ -265,16 +267,33 @@ public class GeyserReversion implements Extension {
         }
     }
 
+    /**
+     * Highest item id/meta upgrade schema id shipped in {@code schema/id_meta_upgrade_schema}.
+     * Schema files are named {@code <4-digit id>_*.json}, so the id space is probed directly
+     * (directory listing is not available from inside a jar). Used only for startup diagnostics.
+     */
+    /**
+     * Highest item id/meta upgrade schema id referenced by a registered protocol. Newer schemas are
+     * never reverted for those targets, so their item renames are polyfilled for older clients.
+     * Used only for startup diagnostics; see docs/LEGACY-DATA.md.
+     */
+    private static int newestRegisteredSchemaId() {
+        return ProtocolInfo.getPacketCodecs().stream()
+                .mapToInt(codec -> GlobalItemDataHandlers.getSchemaId(codec.getProtocolVersion()))
+                .max()
+                .orElse(0);
+    }
+
     private static Optional<BedrockCodec> resolveBridgeCodec() {
         return BridgeCodecSelector.select(DuplicatedProtocolInfo.getPacketCodecs(),
-                protocol -> GameProtocol.getBedrockCodec(protocol) != null,
+                protocol -> GeyserApiCompat.getBedrockCodec(protocol) != null,
                 BridgeCodecSelector::hasMappingData);
     }
 
     private static java.util.List<BedrockCodec> geyserCodecs() {
         java.util.List<BedrockCodec> codecs = new java.util.ArrayList<>();
-        for (int protocol : GameProtocol.SUPPORTED_BEDROCK_PROTOCOLS) {
-            BedrockCodec codec = GameProtocol.getBedrockCodec(protocol);
+        for (int protocol : GeyserApiCompat.supportedBedrockProtocols()) {
+            BedrockCodec codec = GeyserApiCompat.getBedrockCodec(protocol);
             if (codec != null) {
                 codecs.add(codec);
             }

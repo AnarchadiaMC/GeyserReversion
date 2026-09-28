@@ -25,6 +25,27 @@ The modernization pull request #4 ("Modernize for Geyser 2.9.5", branch `moderni
 
 4 numaralı modernizasyon birleştirme isteği ("Modernize for Geyser 2.9.5", `modernize-geyser-2.9.5` dalı) GitHub kullanıcısı [siberanka](https://github.com/siberanka) tarafından hazırlanmıştır. Commit'leri bu deponun geçmişinde değiştirilmeden durmaktadır. Bu commit'lerden üçü (`382c0dd`, `bb41ac2`, `581417f`) katkıcının yerel araçlarından gelen genel `BuildTools <unconfigured@null.spigotmc.org>` kimliğini taşımaktadır; içerdikleri çalışma katkıcıya aittir ve burada ve özgün birleştirme isteği sayfasında siberanka'ya atfedilir.
 
+## Integrated data references / Entegre edilmiş veri referansları
+
+These upstream projects are not part of the fork lineage; their data files are
+vendored or generated into `src/main/resources/`, and their licenses ship beside
+the data. Pinned revisions and checksums are in
+[docs/LEGACY-DATA.md](docs/LEGACY-DATA.md); the per-component license table is
+in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+| Upstream / Üst proje | Used for / Kullanım | License / Lisans |
+|---|---|---|
+| [pmmp/BedrockData](https://github.com/pmmp/BedrockData) (tag `bedrock-1.26.30`, commit `bdb44a48`) | `vanilla/v1001` (protocol 1001, Bedrock 1.26.30) mapping data; also the 1.9.0/1.10.0/1.11.0 inputs to the legacy converter | LGPL-3.0 repository; the per-version data directories carry their own CC0-1.0 `LICENSE` |
+| [pmmp/BedrockBlockPaletteArchive](https://github.com/pmmp/BedrockBlockPaletteArchive) (now opencollab-incubator) | block palettes for 1.9/1.10/1.12, the basis of the generated `vanilla/v332`, `v340` and `v354` directories | CC0-1.0 |
+| [pmmp/BedrockItemUpgradeSchema](https://github.com/pmmp/BedrockItemUpgradeSchema) (now opencollab-incubator/BedrockItemUpgradeSchema) | `schema/id_meta_upgrade_schema/`, including the vendored `0251`, `0261` and `0271` item id/meta transitions | CC0-1.0 |
+| [pmmp/BedrockBlockUpgradeSchema](https://github.com/pmmp/BedrockBlockUpgradeSchema) (now opencollab-incubator/BedrockBlockUpgradeSchema) | `block_schema/` NBT upgrade schemas | CC0-1.0 |
+
+Bu üst projeler çatal soyuna ait değildir; veri dosyaları
+`src/main/resources/` altına alınmış veya üretilmiştir ve lisansları verinin
+yanında bulunur. Sabitlenmiş revizyonlar ve sağlama toplamları
+[docs/LEGACY-DATA.md](docs/LEGACY-DATA.md) içinde, bileşen bazlı lisans tablosu
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) içindedir.
+
 ## Upstream contributors / Üst proje katkıcıları
 
 GitHub contributor data snapshot: 2026-08-25. [View the live contributor graph](https://github.com/oryxel1/GeyserReversion/graphs/contributors).

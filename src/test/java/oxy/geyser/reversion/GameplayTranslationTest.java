@@ -3,6 +3,7 @@ package oxy.geyser.reversion;
 import oxy.geyser.reversion.ouranos.ProtocolInfo;
 import oxy.geyser.reversion.ouranos.converter.ItemTypeDictionary;
 import oxy.geyser.reversion.ouranos.session.SpecialOuranosSession;
+import org.cloudburstmc.protocol.bedrock.codec.BedrockCodec;
 import org.cloudburstmc.protocol.bedrock.packet.*;
 import org.cloudburstmc.protocol.bedrock.data.*;
 import org.cloudburstmc.protocol.bedrock.data.inventory.*;
@@ -12,14 +13,36 @@ import org.cloudburstmc.protocol.bedrock.data.inventory.descriptor.*;
 import org.cloudburstmc.math.vector.*;
 import org.junit.jupiter.api.*;
 import io.netty.buffer.*;
+import oxy.geyser.reversion.util.BridgeCodecSelector;
+import oxy.geyser.reversion.util.GeyserApiCompat;
 import java.util.*;
 import java.util.stream.Stream;
 import static org.junit.jupiter.api.Assertions.*;
 
 /** In-memory wire/semantic tests, NOT real-client gameplay certification. */
 class GameplayTranslationTest {
+    /**
+     * The bridge the runtime actually selects: the newest Bedrock protocol the pinned Geyser and
+     * the checked-in Ouranos mapping data share (1001 on both Geyser 2.11.2 and 2.11.3). Derived
+     * from both sides' own data rather than from {@link BridgeCodecSelector#select}. Every
+     * gameplay, recipe and inventory case below therefore runs against the production target
+     * version instead of a hardcoded protocol.
+     */
+    static final int BRIDGE_PROTOCOL = derivedBridgeProtocol();
+
+    private static int derivedBridgeProtocol() {
+        int[] geyserProtocols = GeyserApiCompat.supportedBedrockProtocols();
+        return ProtocolInfo.getPacketCodecs().stream()
+                .map(BedrockCodec::getProtocolVersion)
+                .filter(protocol -> Arrays.stream(geyserProtocols).anyMatch(supported -> supported == protocol))
+                .filter(BridgeCodecSelector::hasMappingData)
+                .max(Integer::compare)
+                .orElseThrow(() -> new AssertionError("no Bedrock protocol is shared between the pinned Geyser ("
+                        + Arrays.toString(geyserProtocols) + ") and the checked-in Ouranos mapping data"));
+    }
+
     static class Harness extends SpecialOuranosSession {
-        Harness(int protocol) { super(protocol, 944); }
+        Harness(int protocol) { super(protocol, BRIDGE_PROTOCOL); }
         @Override public void sendUpstreamPacket(BedrockPacket packet) { }
         @Override public void sendDownstreamPacket(BedrockPacket packet) { }
     }
@@ -56,7 +79,7 @@ class GameplayTranslationTest {
         start.setBlockNetworkIdsHashed(false);
         session.translateClientbound(start);
         var components = new ItemComponentPacket();
-        components.getItems().addAll(ItemTypeDictionary.getInstance(944).getEntries().entrySet()
+        components.getItems().addAll(ItemTypeDictionary.getInstance(BRIDGE_PROTOCOL).getEntries().entrySet()
                 .stream().map(e -> e.getValue().toDefinition(e.getKey())).toList());
         var registry = org.cloudburstmc.protocol.common.SimpleDefinitionRegistry
                 .<org.cloudburstmc.protocol.bedrock.data.definitions.ItemDefinition>builder();
@@ -79,7 +102,7 @@ class GameplayTranslationTest {
             var content = new InventoryContentPacket(); content.setContainerId(7);
             content.setContainerNameData(new FullContainerName(ContainerSlotType.LEVEL_ENTITY, 0));
             content.setStorageItem(ItemData.AIR);
-            content.getContents().add(item(944, "minecraft:chest", 3));
+            content.getContents().add(item(BRIDGE_PROTOCOL, "minecraft:chest", 3));
             var decoded = (InventoryContentPacket) clientbound(session, content);
             assertEquals(7, decoded.getContainerId()); assertEquals(3, decoded.getContents().getFirst().getCount());
             assertEquals(ItemTypeDictionary.getInstance(protocol).fromStringId("minecraft:chest").intValue(),
@@ -93,8 +116,8 @@ class GameplayTranslationTest {
             var session = initialized(protocol);
             var packet = new CraftingDataPacket(); packet.setCleanRecipes(true);
             var uuid = new UUID(0, 42);
-            var ingredients = List.of(ItemDescriptorWithCount.fromItem(item(944, "minecraft:chest", 1)));
-            var results = List.of(item(944, "minecraft:crafting_table", 1));
+            var ingredients = List.of(ItemDescriptorWithCount.fromItem(item(BRIDGE_PROTOCOL, "minecraft:chest", 1)));
+            var results = List.of(item(BRIDGE_PROTOCOL, "minecraft:crafting_table", 1));
             packet.getCraftingData().add(ShapedRecipeData.of(CraftingDataType.SHAPED, "test:shaped", 1, 1,
                     ingredients, results, uuid, "crafting_table", 0, 123));
             packet.getCraftingData().add(ShapelessRecipeData.of(CraftingDataType.SHAPELESS, "test:shapeless",
@@ -116,9 +139,9 @@ class GameplayTranslationTest {
         var session = initialized(419);
         var packet = new CraftingDataPacket(); packet.setCleanRecipes(true);
         var uuid = new UUID(0, 43);
-        var result = List.of(item(944, "minecraft:crafting_table", 1));
+        var result = List.of(item(BRIDGE_PROTOCOL, "minecraft:crafting_table", 1));
         packet.getCraftingData().add(ShapelessRecipeData.of(CraftingDataType.SHAPELESS, "test:valid",
-                List.of(ItemDescriptorWithCount.fromItem(item(944, "minecraft:chest", 1))),
+                List.of(ItemDescriptorWithCount.fromItem(item(BRIDGE_PROTOCOL, "minecraft:chest", 1))),
                 result, uuid, "crafting_table", 0, 125));
         packet.getCraftingData().add(ShapelessRecipeData.of(CraftingDataType.SHAPELESS, "test:tag",
                 List.of(new ItemDescriptorWithCount(new ItemTagDescriptor("minecraft:planks"), 1)),
@@ -161,7 +184,7 @@ class GameplayTranslationTest {
             var session = initialized(protocol); var packet = new MobEquipmentPacket();
             packet.setRuntimeEntityId(1); packet.setItem(item(protocol, "minecraft:chest", 2));
             var translated = (MobEquipmentPacket) session.translateServerbound(packet);
-            assertEquals(ItemTypeDictionary.getInstance(944).fromStringId("minecraft:chest").intValue(),
+            assertEquals(ItemTypeDictionary.getInstance(BRIDGE_PROTOCOL).fromStringId("minecraft:chest").intValue(),
                     translated.getItem().getDefinition().getRuntimeId());
             assertEquals(2, translated.getItem().getCount());
         }));
@@ -179,7 +202,7 @@ class GameplayTranslationTest {
             use.setItemInHand(item(protocol, "minecraft:chest", 1));
             input.setItemUseTransaction(use);
             var translated = (PlayerAuthInputPacket) session.translateServerbound(input);
-            assertEquals(ItemTypeDictionary.getInstance(944).fromStringId("minecraft:chest").intValue(),
+            assertEquals(ItemTypeDictionary.getInstance(BRIDGE_PROTOCOL).fromStringId("minecraft:chest").intValue(),
                     translated.getItemUseTransaction().getItemInHand().getDefinition().getRuntimeId());
         }));
     }

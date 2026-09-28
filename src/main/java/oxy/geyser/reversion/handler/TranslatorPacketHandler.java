@@ -17,7 +17,6 @@ import org.geysermc.geyser.GeyserImpl;
 
 import org.geysermc.geyser.api.event.bedrock.SessionInitializeEvent;
 import org.geysermc.geyser.event.type.SessionLoadResourcePacksEventImpl;
-import org.geysermc.geyser.network.GameProtocol;
 import org.geysermc.geyser.registry.BlockRegistries;
 import org.geysermc.geyser.registry.Registries;
 import org.geysermc.geyser.session.GeyserSession;
@@ -28,8 +27,9 @@ import oxy.geyser.reversion.DuplicatedProtocolInfo;
 import oxy.geyser.reversion.GeyserReversion;
 import oxy.geyser.reversion.handler.duplicated.UpstreamPacketHandler;
 import oxy.geyser.reversion.session.GeyserTranslatedUser;
-import oxy.geyser.reversion.util.GeyserUtil;
 import oxy.geyser.reversion.util.BridgeCodecSelector;
+import oxy.geyser.reversion.util.GeyserApiCompat;
+import oxy.geyser.reversion.util.GeyserUtil;
 import org.geysermc.geyser.util.LoginEncryptionUtils;
 
 
@@ -52,7 +52,7 @@ public final class TranslatorPacketHandler extends UpstreamPacketHandler {
         if (checkCodec(this.clientProtocol)) {
             return PacketSignal.HANDLED;
         }
-        if (GameProtocol.getBedrockCodec(packet.getProtocolVersion()) != null) {
+        if (GeyserApiCompat.getBedrockCodec(packet.getProtocolVersion()) != null) {
             return super.handle(packet);
         }
 
@@ -89,7 +89,7 @@ public final class TranslatorPacketHandler extends UpstreamPacketHandler {
         if (checkCodec(this.clientProtocol)) {
             return PacketSignal.HANDLED;
         }
-        if (GameProtocol.getBedrockCodec(packet.getProtocolVersion()) != null) {
+        if (GeyserApiCompat.getBedrockCodec(packet.getProtocolVersion()) != null) {
             return super.handle(packet);
         }
 
@@ -263,7 +263,7 @@ public final class TranslatorPacketHandler extends UpstreamPacketHandler {
             return true;
         }
 
-        if (ProtocolInfo.getPacketCodec(protocolVersion) == null && GameProtocol.getBedrockCodec(protocolVersion) == null) {
+        if (ProtocolInfo.getPacketCodec(protocolVersion) == null && GeyserApiCompat.getBedrockCodec(protocolVersion) == null) {
             session.getUpstream().getSession().setCodec(BedrockCompat.disconnectCompat(protocolVersion));
             session.disconnect(GeyserReversion.config().versionNotSupportedKick());
             return true;
@@ -273,7 +273,7 @@ public final class TranslatorPacketHandler extends UpstreamPacketHandler {
         // vanilla/v<protocol> mapping data exists; without it session setup would fail at runtime,
         // so kick with the configured "not supported" message instead of hitting an NPE.
         if (protocolVersion < Bedrock_v361.CODEC.getProtocolVersion()
-                && GameProtocol.getBedrockCodec(protocolVersion) == null
+                && GeyserApiCompat.getBedrockCodec(protocolVersion) == null
                 && !BridgeCodecSelector.hasMappingData(protocolVersion)) {
             session.getUpstream().getSession().setCodec(BedrockCompat.disconnectCompat(protocolVersion));
             session.disconnect(GeyserReversion.config().versionNotSupportedKick());

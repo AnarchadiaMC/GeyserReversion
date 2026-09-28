@@ -58,6 +58,7 @@ import org.cloudburstmc.protocol.bedrock.codec.v859.Bedrock_v859;
 import org.cloudburstmc.protocol.bedrock.codec.v860.Bedrock_v860;
 import org.cloudburstmc.protocol.bedrock.codec.v924.Bedrock_v924;
 import org.cloudburstmc.protocol.bedrock.codec.v944.Bedrock_v944;
+import org.cloudburstmc.protocol.bedrock.codec.v1001.Bedrock_v1001;
 
 import java.util.Collections;
 import java.util.Set;
@@ -86,7 +87,10 @@ public class DuplicatedProtocolInfo {
     }
 
     static {
-        // Modern clients are passed through to Geyser; 944 is our shared bridge.
+        // 1.26.30 (26.30) - top bridge for Geyser 2.11.3+
+        addPacketCodec(Bedrock_v1001.CODEC);
+
+        // Modern clients are passed through to Geyser; 1001 is our shared bridge.
         addPacketCodec(Bedrock_v944.CODEC);
         addPacketCodec(Bedrock_v924.CODEC);
         // 1.21-1.21.132

@@ -3,6 +3,7 @@ package oxy.geyser.reversion;
 import oxy.geyser.reversion.ouranos.ProtocolInfo;
 import oxy.geyser.reversion.ouranos.converter.BlockStateDictionary;
 import oxy.geyser.reversion.ouranos.converter.ItemTypeDictionary;
+import oxy.geyser.reversion.ouranos.data.bedrock.GlobalItemDataHandlers;
 import oxy.geyser.reversion.util.BridgeCodecSelector;
 import org.cloudburstmc.protocol.bedrock.codec.BedrockCodec;
 import org.junit.jupiter.api.BeforeAll;
@@ -12,7 +13,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestFactory;
 
 import java.io.IOException;
+import java.net.URISyntaxException;
 import java.net.URL;
+import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -28,7 +31,10 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.jar.JarFile;
 import java.util.logging.Logger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -47,6 +53,70 @@ class ProtocolDataValidationTest {
 
     static final List<Integer> REGISTERED = registeredProtocols();
     static final Map<Integer, Throwable> DICTIONARY_FAILURES = new ConcurrentHashMap<>();
+
+    static final String SCHEMA_DIR_RESOURCE = "schema/id_meta_upgrade_schema";
+    static final Path SCHEMA_DIR = Path.of("src", "main", "resources", "schema", "id_meta_upgrade_schema");
+    static final Pattern SCHEMA_FILE_NAME = Pattern.compile("(\\d{4})[^/]*\\.json$");
+
+    /*
+     * Protocols whose registered schema id has no backing file in schema/id_meta_upgrade_schema/,
+     * mapped to the reason the id is intentionally inert. An id is only inert when the target
+     * version is known to need no reversion beyond the newest vendored schema, so the reason has
+     * to name that version and the schema that would otherwise be missing. Currently empty: every
+     * id passed to ProtocolInfo.addPacketCodec resolves to a real file, which is what makes
+     * ItemIdMetaDowngrader revert exactly the schemas newer than the target version.
+     */
+    static final Map<Integer, String> INERT_SCHEMA_IDS = Map.of();
+
+    static List<Integer> protocolInfoProtocols() {
+        return ProtocolInfo.getPacketCodecs().stream()
+                .map(BedrockCodec::getProtocolVersion)
+                .sorted()
+                .toList();
+    }
+
+    static String schemaFileName(int schemaId) {
+        return String.format("%04d", schemaId) + "_*.json";
+    }
+
+    static Set<Integer> availableSchemaIds() throws IOException, URISyntaxException {
+        URL resource = ProtocolDataValidationTest.class.getClassLoader().getResource(SCHEMA_DIR_RESOURCE);
+        assertNotNull(resource, () -> "Resource directory " + SCHEMA_DIR_RESOURCE + " is missing from the classpath");
+        Set<Integer> ids = new TreeSet<>();
+        String path = resource.getPath();
+        if (path.contains(".jar!")) {
+            readSchemaIdsFromJar(path, ids);
+        } else {
+            readSchemaIdsFromDirectory(Path.of(resource.toURI()), ids);
+        }
+        return ids;
+    }
+
+    static void readSchemaIdsFromJar(String resourcePath, Set<Integer> ids) throws IOException {
+        String jarPath = URLDecoder.decode(
+                resourcePath.substring("file:".length(), resourcePath.indexOf(".jar!") + 4),
+                StandardCharsets.UTF_8);
+        try (JarFile jarFile = new JarFile(jarPath)) {
+            for (var entries = jarFile.entries(); entries.hasMoreElements(); ) {
+                Matcher matcher = SCHEMA_FILE_NAME.matcher(entries.nextElement().getName());
+                if (matcher.find()) {
+                    ids.add(Integer.parseInt(matcher.group(1)));
+                }
+            }
+        }
+    }
+
+    static void readSchemaIdsFromDirectory(Path directory, Set<Integer> ids) throws IOException {
+        assertTrue(Files.isDirectory(directory),
+                () -> "Schema resource directory " + directory + " is not a directory");
+        try (Stream<Path> files = Files.list(directory)) {
+            files.map(file -> file.getFileName().toString())
+                    .map(SCHEMA_FILE_NAME::matcher)
+                    .filter(Matcher::find)
+                    .map(matcher -> Integer.parseInt(matcher.group(1)))
+                    .forEach(ids::add);
+        }
+    }
 
     static List<Integer> registeredProtocols() {
         return Stream.concat(
@@ -124,6 +194,57 @@ class ProtocolDataValidationTest {
         assertEquals(catalog, duplicated,
                 () -> "Protocol catalogs differ. ProtocolInfo=" + catalog + ", DuplicatedProtocolInfo=" + duplicated
                         + ". Sorted registered protocols: " + REGISTERED);
+    }
+
+    @Test
+    void everyRegisteredProtocolHasBackingSchemaFile() throws IOException, URISyntaxException {
+        Set<Integer> available = availableSchemaIds();
+        assertFalse(available.isEmpty(), () -> "No schema files found under " + SCHEMA_DIR);
+
+        List<String> violations = new ArrayList<>();
+        for (int protocol : protocolInfoProtocols()) {
+            int schemaId = GlobalItemDataHandlers.getSchemaId(protocol);
+            String inert = INERT_SCHEMA_IDS.get(protocol);
+            if (available.contains(schemaId)) {
+                if (inert != null) {
+                    violations.add("protocol " + protocol + " is listed in INERT_SCHEMA_IDS as \"" + inert
+                            + "\" but " + schemaFileName(schemaId) + " now exists in " + SCHEMA_DIR
+                            + "; remove the allowlist entry");
+                }
+                continue;
+            }
+            if (inert == null) {
+                violations.add("protocol " + protocol + " is registered with schema id " + schemaId
+                        + " but " + schemaFileName(schemaId) + " does not exist in " + SCHEMA_DIR
+                        + ". ItemIdMetaDowngrader therefore reverts nothing past " + schemaFileName(schemaId)
+                        + " for that target, so items renamed after it reach the client under an unknown id"
+                        + " and get polyfilled. Vendor the schema from"
+                        + " https://github.com/opencollab-incubator/BedrockItemUpgradeSchema"
+                        + " (id_meta_upgrade_schema/), lower the id to the newest vendored schema that the"
+                        + " target version has already completed, or add the protocol to INERT_SCHEMA_IDS"
+                        + " with the reason.");
+            }
+        }
+
+        assertTrue(violations.isEmpty(), () -> "Schema-id coverage violations:"
+                + System.lineSeparator() + String.join(System.lineSeparator(), violations)
+                + System.lineSeparator() + "Available schema ids: " + available);
+    }
+
+    @Test
+    void noVendoredSchemaIsNewerThanEveryRegisteredProtocol() throws IOException, URISyntaxException {
+        Set<Integer> available = availableSchemaIds();
+        int maxRegistered = protocolInfoProtocols().stream()
+                .mapToInt(GlobalItemDataHandlers::getSchemaId)
+                .max()
+                .orElseThrow(() -> new IllegalStateException("ProtocolInfo registers no protocols"));
+
+        for (int schemaId : available) {
+            assertTrue(schemaId <= maxRegistered, () -> "Schema file " + schemaFileName(schemaId) + " in "
+                    + SCHEMA_DIR + " is newer than every registered protocol (highest registered schema id is "
+                    + maxRegistered + "), so no target can ever apply or revert it. Remove it, or register a"
+                    + " protocol whose version has completed it.");
+        }
     }
 
     @TestFactory

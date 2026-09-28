@@ -31,9 +31,50 @@ import oxy.geyser.reversion.ouranos.base.WrappedBedrockPacket;
 import oxy.geyser.reversion.ouranos.data.bedrock.GlobalItemDataHandlers;
 import oxy.geyser.reversion.ouranos.session.OuranosSession;
 import oxy.geyser.reversion.ouranos.session.SpecialOuranosSession;
+import oxy.geyser.reversion.ouranos.converter.ItemTypeDictionary;
+import oxy.geyser.reversion.ouranos.translators.new_to_old.v1001to944.Protocol1001to944;
 import oxy.geyser.reversion.ouranos.translators.new_to_old.v340to332.Protocol340to332;
 import oxy.geyser.reversion.ouranos.translators.new_to_old.v354to340.Protocol354to340;
 import oxy.geyser.reversion.ouranos.translators.new_to_old.v361to354.Protocol361to354;
+import org.cloudburstmc.math.vector.Vector3f;
+import org.cloudburstmc.protocol.bedrock.data.GraphicsMode;
+import org.cloudburstmc.protocol.bedrock.data.GraphicsOverrideParameterType;
+import org.cloudburstmc.protocol.bedrock.data.SoundEvent;
+import org.cloudburstmc.protocol.bedrock.data.attributelayer.AttributeLayerSettings;
+import org.cloudburstmc.protocol.bedrock.data.attributelayer.UpdateAttributeLayerSettingsData;
+import org.cloudburstmc.protocol.bedrock.data.definitions.DimensionDefinition;
+import org.cloudburstmc.protocol.bedrock.data.entity.EntityEventType;
+import org.cloudburstmc.protocol.bedrock.data.inventory.ContainerSlotType;
+import org.cloudburstmc.protocol.bedrock.data.inventory.EnchantData;
+import org.cloudburstmc.protocol.bedrock.data.inventory.EnchantOptionData;
+import org.cloudburstmc.protocol.bedrock.data.inventory.FullContainerName;
+import org.cloudburstmc.protocol.bedrock.data.inventory.ItemData;
+import org.cloudburstmc.protocol.bedrock.packet.BossEventPacket;
+import org.cloudburstmc.protocol.bedrock.packet.ClientboundAttributeLayerSyncPacket;
+import org.cloudburstmc.protocol.bedrock.packet.ClientboundUpdateSoundDataPacket;
+import org.cloudburstmc.protocol.bedrock.packet.DebugDrawerPacket;
+import org.cloudburstmc.protocol.bedrock.packet.DimensionDataPacket;
+import org.cloudburstmc.protocol.bedrock.packet.EntityEventPacket;
+import org.cloudburstmc.protocol.bedrock.packet.GraphicsParameterOverridePacket;
+import org.cloudburstmc.protocol.bedrock.packet.InventoryContentPacket;
+import org.cloudburstmc.protocol.bedrock.packet.InventorySlotPacket;
+import org.cloudburstmc.protocol.bedrock.packet.ItemComponentPacket;
+import org.cloudburstmc.protocol.bedrock.packet.LevelSoundEventPacket;
+import org.cloudburstmc.protocol.bedrock.packet.LocatorBarPacket;
+import org.cloudburstmc.protocol.bedrock.packet.MovementPredictionSyncPacket;
+import org.cloudburstmc.protocol.bedrock.packet.MoveEntityAbsolutePacket;
+import org.cloudburstmc.protocol.bedrock.packet.PartyChangedPacket;
+import org.cloudburstmc.protocol.bedrock.packet.PartyDestinationCookieResponsePacket;
+import org.cloudburstmc.protocol.bedrock.packet.PlaySoundPacket;
+import org.cloudburstmc.protocol.bedrock.packet.PlayerEnchantOptionsPacket;
+import org.cloudburstmc.protocol.bedrock.packet.SendPartyDestinationCookiePacket;
+import org.cloudburstmc.protocol.bedrock.packet.ServerPresenceInfoPacket;
+import org.cloudburstmc.protocol.bedrock.packet.ServerStoreInfoPacket;
+import org.cloudburstmc.protocol.bedrock.packet.ServerboundDiagnosticsPacket;
+import org.cloudburstmc.protocol.bedrock.packet.StartGamePacket;
+import org.cloudburstmc.protocol.bedrock.packet.SubChunkRequestPacket;
+import org.cloudburstmc.protocol.bedrock.packet.UpdateClientOptionsPacket;
+import org.cloudburstmc.protocol.common.util.TextConverter;
 
 import java.util.List;
 
@@ -490,5 +531,533 @@ class LegacyTranslatorTest {
 
     private static List<Class<?>> classes(List<ProtocolToProtocol> translators) {
         return translators.stream().<Class<?>>map(ProtocolToProtocol::getClass).toList();
+    }
+
+    // ============================================================================================
+    // 1.26.30 (1001) -> 1.26.10 (944) downgrade.
+    //
+    // Direction policy follows the legacy tests above: the session is (protocolId = 944 legacy
+    // client, targetVersion = 1001 modern server), so clientbound wire tests encode with the 1001
+    // server codec and decode with the 944 client codec, and serverbound wire tests encode with the
+    // 944 client codec and decode with the 1001 server codec.
+    // ============================================================================================
+
+    private static final StubSession SESSION_944 = new StubSession(944, 1001);
+
+    private static Protocol1001to944 newV1001to944() {
+        return new Protocol1001to944();
+    }
+
+    private static void assertCancelledClientbound1001(Protocol1001to944 translator, BedrockPacket packet) {
+        final WrappedBedrockPacket wrapped = new WrappedBedrockPacket(SESSION_944, 1001, 944, packet, false);
+        translator.passthroughClientbound(wrapped);
+        assertTrue(wrapped.isCancelled(), packet.getClass().getSimpleName());
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <T extends BedrockPacket> T clientboundWire1001(WireSession session, BedrockPacket packet) {
+        final ByteBuf input = Unpooled.buffer();
+        final ByteBuf output = Unpooled.buffer();
+        try {
+            session.encodeServer(packet, input);
+            final int id = session.getServerCodec().getPacketDefinition(packet.getClass()).getId();
+            final Integer translatedId = session.translateClientbound(input, output, id);
+            assertNotNull(translatedId, packet.getClass().getSimpleName());
+            final T decoded = (T) session.getClientCodec().tryDecode(session.getClientCodecHelper(), output, translatedId);
+            assertEquals(0, output.readableBytes());
+            return decoded;
+        } finally {
+            input.release();
+            output.release();
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <T extends BedrockPacket> T serverboundWire944(WireSession session, BedrockPacket packet) {
+        final ByteBuf input = Unpooled.buffer();
+        final ByteBuf output = Unpooled.buffer();
+        try {
+            session.encodeClient(packet, input);
+            final int id = session.getClientCodec().getPacketDefinition(packet.getClass()).getId();
+            final Integer translatedId = session.translateServerbound(input, output, id);
+            assertNotNull(translatedId, packet.getClass().getSimpleName());
+            final T decoded = (T) session.getServerCodec().tryDecode(session.getServerCodecHelper(), output, translatedId);
+            assertEquals(0, output.readableBytes());
+            return decoded;
+        } finally {
+            input.release();
+            output.release();
+        }
+    }
+
+    private static ItemData item1001(String identifier, int count) {
+        final var entry = ItemTypeDictionary.getInstance(1001).getEntries().get(identifier);
+        assertNotNull(entry, identifier + " in 1001");
+        return ItemData.builder().definition(entry.toDefinition(identifier)).count(count).build();
+    }
+
+    private static void initItemDefinitions(WireSession session) {
+        // StartGame initializes the BlockDictionaryStorage that block items are translated through.
+        session.translateClientbound(new StartGamePacket());
+        final ItemComponentPacket components = new ItemComponentPacket();
+        components.getItems().addAll(ItemTypeDictionary.getInstance(1001).getEntries().entrySet()
+                .stream().map(e -> e.getValue().toDefinition(e.getKey())).toList());
+        final var registry = org.cloudburstmc.protocol.common.SimpleDefinitionRegistry
+                .<org.cloudburstmc.protocol.bedrock.data.definitions.ItemDefinition>builder();
+        components.getItems().forEach(registry::add);
+        final var definitions = registry.build();
+        session.getServerCodecHelper().setItemDefinitions(definitions);
+        session.getClientCodecHelper().setItemDefinitions(new oxy.geyser.reversion.ouranos.utils.ItemTypeDictionaryRegistry(definitions, 944));
+    }
+
+    @Test
+    void v1001PacketRecipientsMatchTranslatorDirections() {
+        assertEquals(PacketRecipient.CLIENT, recipient(1001, StartGamePacket.class));
+        assertEquals(PacketRecipient.BOTH, recipient(1001, BossEventPacket.class));
+        assertEquals(PacketRecipient.CLIENT, recipient(1001, PlaySoundPacket.class));
+        assertEquals(PacketRecipient.SERVER, recipient(1001, MovementPredictionSyncPacket.class));
+        assertEquals(PacketRecipient.CLIENT, recipient(1001, GraphicsParameterOverridePacket.class));
+        assertEquals(PacketRecipient.CLIENT, recipient(1001, LocatorBarPacket.class));
+        assertEquals(PacketRecipient.CLIENT, recipient(1001, DebugDrawerPacket.class));
+        assertEquals(PacketRecipient.CLIENT, recipient(1001, DimensionDataPacket.class));
+        assertEquals(PacketRecipient.CLIENT, recipient(1001, ClientboundAttributeLayerSyncPacket.class));
+        assertEquals(PacketRecipient.SERVER, recipient(1001, PartyChangedPacket.class));
+        assertEquals(PacketRecipient.SERVER, recipient(1001, SubChunkRequestPacket.class));
+        assertEquals(PacketRecipient.SERVER, recipient(1001, ServerboundDiagnosticsPacket.class));
+        assertEquals(PacketRecipient.SERVER, recipient(1001, UpdateClientOptionsPacket.class));
+        assertEquals(PacketRecipient.BOTH, recipient(1001, MoveEntityAbsolutePacket.class));
+        assertEquals(PacketRecipient.CLIENT, recipient(1001, PlayerEnchantOptionsPacket.class));
+        assertEquals(PacketRecipient.CLIENT, recipient(1001, InventorySlotPacket.class));
+        assertEquals(PacketRecipient.CLIENT, recipient(1001, InventoryContentPacket.class));
+    }
+
+    @Test
+    void startGameStripsV1001EditorFields() {
+        final StartGamePacket packet = new StartGamePacket();
+        packet.setServerEditorConnectionPolicy(3);
+        packet.setAllowAnonymousBlockDropsInEditorWorlds(true);
+        packet.setLoggingChat(true);
+
+        final WrappedBedrockPacket wrapped = new WrappedBedrockPacket(SESSION_944, 1001, 944, packet, false);
+        newV1001to944().passthroughClientbound(wrapped);
+
+        assertFalse(wrapped.isCancelled());
+        assertEquals(0, packet.getServerEditorConnectionPolicy());
+        assertFalse(packet.isAllowAnonymousBlockDropsInEditorWorlds());
+        assertFalse(packet.isLoggingChat());
+    }
+
+    @Test
+    void entityEventStripsFireAtPosition() {
+        final EntityEventPacket packet = new EntityEventPacket();
+        packet.setFireAtPosition(Vector3f.from(1, 2, 3));
+
+        final WrappedBedrockPacket wrapped = new WrappedBedrockPacket(SESSION_944, 1001, 944, packet, false);
+        newV1001to944().passthroughClientbound(wrapped);
+
+        assertFalse(wrapped.isCancelled());
+        assertNull(packet.getFireAtPosition());
+    }
+
+    @Test
+    void playSoundStripsServerSoundHandle() {
+        final PlaySoundPacket packet = new PlaySoundPacket();
+        packet.setServerSoundHandle(42L);
+
+        final WrappedBedrockPacket wrapped = new WrappedBedrockPacket(SESSION_944, 1001, 944, packet, false);
+        newV1001to944().passthroughClientbound(wrapped);
+
+        assertFalse(wrapped.isCancelled());
+        assertNull(packet.getServerSoundHandle());
+    }
+
+    @Test
+    void movementPredictionSyncDefaultsSurviveTheWire() {
+        // MovementPredictionSync is serverbound; the 944 client wire (v776) has no v975 fields and the
+        // 1001 server codec re-encodes the defaults, so no handler is required.
+        final WireSession session = new WireSession(944, 1001);
+        final MovementPredictionSyncPacket packet = new MovementPredictionSyncPacket();
+        packet.setBoundingBox(Vector3f.ONE);
+        packet.setSpeed(1.5f);
+        packet.setUnderwaterSpeed(2.5f);
+        packet.setLavaSpeed(3.5f);
+        packet.setJumpStrength(4.5f);
+        packet.setHealth(5.5f);
+        packet.setHunger(6.5f);
+        packet.setUniqueEntityId(13L);
+
+        final MovementPredictionSyncPacket decoded = serverboundWire944(session, packet);
+        assertEquals(Vector3f.ONE, decoded.getBoundingBox());
+        assertEquals(1.5f, decoded.getSpeed());
+        assertEquals(2.5f, decoded.getUnderwaterSpeed());
+        assertEquals(3.5f, decoded.getLavaSpeed());
+        assertEquals(4.5f, decoded.getJumpStrength());
+        assertEquals(5.5f, decoded.getHealth());
+        assertEquals(6.5f, decoded.getHunger());
+        assertEquals(13L, decoded.getUniqueEntityId());
+        assertEquals(0f, decoded.getUnknown1());
+        assertEquals(0f, decoded.getUnknown2());
+        assertEquals(0f, decoded.getUnknown3());
+        assertFalse(decoded.isFlying());
+    }
+
+    @Test
+    void graphicsParameterOverrideStripsPlayerIdentifier() {
+        final GraphicsParameterOverridePacket packet = new GraphicsParameterOverridePacket();
+        packet.setPlayerIdentifier("player1");
+
+        final WrappedBedrockPacket wrapped = new WrappedBedrockPacket(SESSION_944, 1001, 944, packet, false);
+        newV1001to944().passthroughClientbound(wrapped);
+
+        assertFalse(wrapped.isCancelled());
+        assertNull(packet.getPlayerIdentifier());
+    }
+
+    @Test
+    void locatorBarAndDebugDrawerAreCancelled() {
+        assertCancelledClientbound1001(newV1001to944(), new LocatorBarPacket());
+        assertCancelledClientbound1001(newV1001to944(), new DebugDrawerPacket());
+    }
+
+    @Test
+    void locatorBarAndDebugDrawerAreDroppedOnTheWire() {
+        final WireSession session = new WireSession(944, 1001);
+        for (BedrockPacket packet : List.of(new LocatorBarPacket(), new DebugDrawerPacket())) {
+            final ByteBuf input = Unpooled.buffer();
+            final ByteBuf output = Unpooled.buffer();
+            try {
+                session.encodeServer(packet, input);
+                final int id = session.getServerCodec().getPacketDefinition(packet.getClass()).getId();
+                assertNull(session.translateClientbound(input, output, id), packet.getClass().getSimpleName());
+                assertEquals(0, output.readableBytes());
+            } finally {
+                input.release();
+                output.release();
+            }
+        }
+    }
+
+    @Test
+    void levelSoundEventSoundNameSurvivesAsIdOnTheWire() {
+        final WireSession session = new WireSession(944, 1001);
+        final LevelSoundEventPacket packet = new LevelSoundEventPacket();
+        packet.setSound(SoundEvent.HIT);
+        packet.setPosition(Vector3f.ZERO);
+        packet.setExtraData(7);
+        packet.setIdentifier("");
+        packet.setBabySound(false);
+        packet.setRelativeVolumeDisabled(false);
+        packet.setEntityUniqueId(5L);
+        packet.setFireAtPosition(Vector3f.ONE);
+
+        final LevelSoundEventPacket decoded = clientboundWire1001(session, packet);
+        assertEquals(SoundEvent.HIT, decoded.getSound());
+        assertEquals(7, decoded.getExtraData());
+        assertEquals(5L, decoded.getEntityUniqueId());
+        assertNull(decoded.getFireAtPosition());
+    }
+
+    @Test
+    void bossEventSurvivesTheWire() {
+        final WireSession session = new WireSession(944, 1001);
+        session.getServerCodecHelper().setTextConverter(TextConverter.DEFAULT);
+        session.getClientCodecHelper().setTextConverter(TextConverter.DEFAULT);
+
+        final BossEventPacket packet = new BossEventPacket();
+        packet.setBossUniqueEntityId(11L);
+        packet.setPlayerUniqueEntityId(22L);
+        packet.setAction(BossEventPacket.Action.CREATE);
+        packet.setTitle("Boss");
+        packet.setFilteredTitle("Boss");
+        packet.setHealthPercentage(0.5f);
+        packet.setColor(3);
+        packet.setOverlay(2);
+
+        final BossEventPacket decoded = clientboundWire1001(session, packet);
+        assertEquals(11L, decoded.getBossUniqueEntityId());
+        // The v776 layout (used by v944) only carries playerUniqueEntityId for the QUERY,
+        // REGISTER_PLAYER and UNREGISTER_PLAYER actions, so it is dropped for CREATE.
+        assertEquals(0L, decoded.getPlayerUniqueEntityId());
+        assertEquals(BossEventPacket.Action.CREATE, decoded.getAction());
+        assertEquals("Boss", decoded.getTitle());
+        assertEquals("Boss", decoded.getFilteredTitle());
+        assertEquals(0.5f, decoded.getHealthPercentage());
+        assertEquals(3, decoded.getColor());
+        assertEquals(2, decoded.getOverlay());
+    }
+
+    @Test
+    void entityEventSurvivesTheWire() {
+        final WireSession session = new WireSession(944, 1001);
+        final EntityEventPacket packet = new EntityEventPacket();
+        packet.setRuntimeEntityId(9L);
+        packet.setType(EntityEventType.HURT);
+        packet.setData(3);
+        packet.setFireAtPosition(Vector3f.ZERO);
+
+        final EntityEventPacket decoded = clientboundWire1001(session, packet);
+        assertEquals(9L, decoded.getRuntimeEntityId());
+        assertEquals(EntityEventType.HURT, decoded.getType());
+        assertEquals(3, decoded.getData());
+        assertNull(decoded.getFireAtPosition());
+    }
+
+    @Test
+    void playSoundSurvivesTheWire() {
+        final WireSession session = new WireSession(944, 1001);
+        final PlaySoundPacket packet = new PlaySoundPacket();
+        packet.setSound("minecraft:random.levelup");
+        packet.setPosition(Vector3f.from(1.5f, 2.5f, 3.5f));
+        packet.setVolume(0.5f);
+        packet.setPitch(0.7f);
+        packet.setServerSoundHandle(42L);
+
+        final PlaySoundPacket decoded = clientboundWire1001(session, packet);
+        assertEquals("minecraft:random.levelup", decoded.getSound());
+        assertEquals(0.5f, decoded.getVolume());
+        assertEquals(0.7f, decoded.getPitch());
+        assertNull(decoded.getServerSoundHandle());
+    }
+
+    @Test
+    void graphicsParameterOverrideSurvivesTheWire() {
+        final WireSession session = new WireSession(944, 1001);
+        final GraphicsParameterOverridePacket packet = new GraphicsParameterOverridePacket();
+        packet.setValues(new java.util.LinkedHashMap<>());
+        packet.setFloatValue(0.25f);
+        packet.setVec3Value(Vector3f.ONE);
+        packet.setBiomeIdentifier("minecraft:plains");
+        packet.setPlayerIdentifier("player1");
+        packet.setParameterType(GraphicsOverrideParameterType.SKY_ZENITH_COLOR);
+        packet.setReset(false);
+
+        final GraphicsParameterOverridePacket decoded = clientboundWire1001(session, packet);
+        assertEquals(0.25f, decoded.getFloatValue());
+        assertEquals(Vector3f.ONE, decoded.getVec3Value());
+        assertEquals("minecraft:plains", decoded.getBiomeIdentifier());
+        assertEquals(GraphicsOverrideParameterType.SKY_ZENITH_COLOR, decoded.getParameterType());
+        assertFalse(decoded.isReset());
+        assertNull(decoded.getPlayerIdentifier());
+    }
+
+    @Test
+    void partyChangedStripsPartyLeaderOnTheWire() {
+        final WireSession session = new WireSession(944, 1001);
+        final PartyChangedPacket packet = new PartyChangedPacket();
+        packet.setParty(new PartyChangedPacket.PartyInfo("party1", true));
+
+        final PartyChangedPacket decoded = clientboundWire1001(session, packet);
+        assertEquals("party1", decoded.getParty().getPartyId());
+        assertFalse(decoded.getParty().isPartyLeader());
+    }
+
+    @Test
+    void dimensionDataStripsDimensionTypeOnTheWire() {
+        final WireSession session = new WireSession(944, 1001);
+        final DimensionDataPacket packet = new DimensionDataPacket();
+        packet.getDefinitions().add(new DimensionDefinition("minecraft:overworld", 384, -64, 1, 7, null, null));
+
+        final DimensionDataPacket decoded = clientboundWire1001(session, packet);
+        assertEquals(1, decoded.getDefinitions().size());
+        final DimensionDefinition definition = decoded.getDefinitions().getFirst();
+        assertEquals("minecraft:overworld", definition.getId());
+        assertEquals(384, definition.getMaximumHeight());
+        assertEquals(-64, definition.getMinimumHeight());
+        assertEquals(1, definition.getGeneratorType());
+        assertEquals(0, definition.getDimensionType());
+    }
+
+    @Test
+    void attributeLayerSyncSurvivesTheWire() {
+        final WireSession session = new WireSession(944, 1001);
+        final ClientboundAttributeLayerSyncPacket packet = new ClientboundAttributeLayerSyncPacket();
+        packet.setData(new UpdateAttributeLayerSettingsData("layer1", 2,
+                new AttributeLayerSettings(3, new AttributeLayerSettings.FloatWeight(0.5f), true, false)));
+
+        final ClientboundAttributeLayerSyncPacket decoded = clientboundWire1001(session, packet);
+        assertTrue(decoded.getData() instanceof UpdateAttributeLayerSettingsData);
+        final UpdateAttributeLayerSettingsData data = (UpdateAttributeLayerSettingsData) decoded.getData();
+        assertEquals("layer1", data.getLayerName());
+        assertEquals(2, data.getDimension());
+        assertEquals(3, data.getSettings().getPriority());
+        assertEquals(0.5f, ((AttributeLayerSettings.FloatWeight) data.getSettings().getWeight()).getValue());
+        assertTrue(data.getSettings().isEnabled());
+        assertFalse(data.getSettings().isTransitionsPaused());
+    }
+
+    @Test
+    void subChunkRequestSurvivesTheWire() {
+        final WireSession session = new WireSession(944, 1001);
+        final SubChunkRequestPacket packet = new SubChunkRequestPacket();
+        packet.setDimension(0);
+        packet.setSubChunkPosition(Vector3i.from(2, 3, 4));
+        packet.getPositionOffsets().add(Vector3i.from(1, 0, -1));
+        packet.getPositionOffsets().add(Vector3i.from(0, 1, 1));
+
+        final SubChunkRequestPacket decoded = serverboundWire944(session, packet);
+        assertEquals(0, decoded.getDimension());
+        assertEquals(Vector3i.from(2, 3, 4), decoded.getSubChunkPosition());
+        assertEquals(2, decoded.getPositionOffsets().size());
+        assertEquals(Vector3i.from(1, 0, -1), decoded.getPositionOffsets().getFirst());
+        assertEquals(Vector3i.from(0, 1, 1), decoded.getPositionOffsets().get(1));
+    }
+
+    @Test
+    void serverboundDiagnosticsSurvivesTheWire() {
+        final WireSession session = new WireSession(944, 1001);
+        final ServerboundDiagnosticsPacket packet = new ServerboundDiagnosticsPacket();
+        packet.setAvgFps(60f);
+        packet.setAvgServerSimTickTimeMS(5f);
+        packet.setAvgClientSimTickTimeMS(6f);
+        packet.setAvgBeginFrameTimeMS(7f);
+        packet.setAvgInputTimeMS(8f);
+        packet.setAvgRenderTimeMS(9f);
+        packet.setAvgEndFrameTimeMS(10f);
+        packet.setAvgRemainderTimePercent(11f);
+        packet.setAvgUnaccountedTimePercent(12f);
+
+        final ServerboundDiagnosticsPacket decoded = serverboundWire944(session, packet);
+        assertEquals(60f, decoded.getAvgFps());
+        assertEquals(5f, decoded.getAvgServerSimTickTimeMS());
+        assertEquals(6f, decoded.getAvgClientSimTickTimeMS());
+        assertEquals(7f, decoded.getAvgBeginFrameTimeMS());
+        assertEquals(8f, decoded.getAvgInputTimeMS());
+        assertEquals(9f, decoded.getAvgRenderTimeMS());
+        assertEquals(10f, decoded.getAvgEndFrameTimeMS());
+        assertEquals(11f, decoded.getAvgRemainderTimePercent());
+        assertEquals(12f, decoded.getAvgUnaccountedTimePercent());
+    }
+
+    @Test
+    void updateClientOptionsSurvivesTheWire() {
+        final WireSession session = new WireSession(944, 1001);
+        final UpdateClientOptionsPacket packet = new UpdateClientOptionsPacket();
+        packet.setGraphicsMode(GraphicsMode.FANCY);
+
+        final UpdateClientOptionsPacket decoded = serverboundWire944(session, packet);
+        assertEquals(GraphicsMode.FANCY, decoded.getGraphicsMode());
+        assertNull(decoded.getFilterProfanityChange());
+    }
+
+    @Test
+    void moveEntityAbsoluteKeepsForceCompletionClearedOnTheWire() {
+        final WireSession session = new WireSession(944, 1001);
+        final MoveEntityAbsolutePacket packet = new MoveEntityAbsolutePacket();
+        packet.setRuntimeEntityId(7L);
+        packet.setOnGround(true);
+        packet.setTeleported(true);
+        packet.setForceMove(false);
+        packet.setPosition(Vector3f.from(1.5f, 64f, -2.5f));
+        packet.setRotation(Vector3f.ZERO);
+
+        final MoveEntityAbsolutePacket decoded = serverboundWire944(session, packet);
+        assertTrue(decoded.isOnGround());
+        assertTrue(decoded.isTeleported());
+        assertFalse(decoded.isForceMove());
+        assertFalse(decoded.isForceCompletion());
+        assertEquals(Vector3f.from(1.5f, 64f, -2.5f), decoded.getPosition());
+    }
+
+    @Test
+    void playerEnchantOptionsSurvivesTheWire() {
+        final WireSession session = new WireSession(944, 1001);
+        final PlayerEnchantOptionsPacket packet = new PlayerEnchantOptionsPacket();
+        packet.getOptions().add(new EnchantOptionData(3, 1,
+                List.of(new EnchantData(2, 1)), List.of(), List.of(), "ench", 7));
+
+        final PlayerEnchantOptionsPacket decoded = clientboundWire1001(session, packet);
+        assertEquals(1, decoded.getOptions().size());
+        assertEquals(3, decoded.getOptions().getFirst().getCost());
+        assertEquals(1, decoded.getOptions().getFirst().getPrimarySlot());
+        assertEquals(2, decoded.getOptions().getFirst().getEnchants0().getFirst().getType());
+        assertEquals(1, decoded.getOptions().getFirst().getEnchants0().getFirst().getLevel());
+        assertEquals("ench", decoded.getOptions().getFirst().getEnchantName());
+        assertEquals(7, decoded.getOptions().getFirst().getEnchantNetId());
+    }
+
+    @Test
+    void playerEnchantOptionsWithUnencodableTypeIsCancelled() {
+        final PlayerEnchantOptionsPacket packet = new PlayerEnchantOptionsPacket();
+        packet.getOptions().add(new EnchantOptionData(3, 1,
+                List.of(new EnchantData(300, 1)), List.of(), List.of(), "ench", 7));
+
+        final WrappedBedrockPacket wrapped = new WrappedBedrockPacket(SESSION_944, 1001, 944, packet, false);
+        newV1001to944().passthroughClientbound(wrapped);
+
+        assertTrue(wrapped.isCancelled());
+    }
+
+    @Test
+    void inventorySlotClientboundItemsAreDowngradedOnTheWire() {
+        final WireSession session = new WireSession(944, 1001);
+        initItemDefinitions(session);
+        final InventorySlotPacket packet = new InventorySlotPacket();
+        packet.setContainerId(0);
+        packet.setSlot(3);
+        packet.setItem(item1001("minecraft:stone", 2));
+
+        final InventorySlotPacket decoded = clientboundWire1001(session, packet);
+        assertEquals("minecraft:stone", decoded.getItem().getDefinition().getIdentifier());
+        assertEquals(2, decoded.getItem().getCount());
+    }
+
+    @Test
+    void inventoryContentClientboundItemsAreDowngradedOnTheWire() {
+        final WireSession session = new WireSession(944, 1001);
+        initItemDefinitions(session);
+        final InventoryContentPacket packet = new InventoryContentPacket();
+        packet.setContainerId(0);
+        packet.setContainerNameData(new FullContainerName(ContainerSlotType.LEVEL_ENTITY, 0));
+        packet.setStorageItem(ItemData.AIR);
+        packet.getContents().add(item1001("minecraft:stone", 2));
+
+        final InventoryContentPacket decoded = clientboundWire1001(session, packet);
+        assertEquals(1, decoded.getContents().size());
+        assertEquals("minecraft:stone", decoded.getContents().getFirst().getDefinition().getIdentifier());
+        assertEquals(2, decoded.getContents().getFirst().getCount());
+        assertTrue(decoded.getStorageItem().isNull());
+    }
+
+    @Test
+    void v975ClientboundAdditionsAreDroppedOnTheWire() {
+        final WireSession session = new WireSession(944, 1001);
+        final SendPartyDestinationCookiePacket cookie = new SendPartyDestinationCookiePacket();
+        cookie.setCookie("cookie");
+        cookie.setIntent(SendPartyDestinationCookiePacket.Intent.NOTIFY);
+        cookie.setDestinationName("destination");
+        final ClientboundUpdateSoundDataPacket soundData = new ClientboundUpdateSoundDataPacket();
+        soundData.setType("minecraft:sound");
+        final PartyDestinationCookieResponsePacket cookieResponse = new PartyDestinationCookieResponsePacket();
+        cookieResponse.setCookie("cookie");
+        for (BedrockPacket packet : List.of(
+                new ServerStoreInfoPacket(),
+                new ServerPresenceInfoPacket(),
+                soundData,
+                cookie,
+                cookieResponse)) {
+            assertNull(session.getClientCodec().getPacketDefinition(packet.getClass()),
+                    packet.getClass().getSimpleName() + " must be unknown to the client codec");
+            final ByteBuf input = Unpooled.buffer();
+            final ByteBuf output = Unpooled.buffer();
+            try {
+                session.encodeServer(packet, input);
+                final int id = session.getServerCodec().getPacketDefinition(packet.getClass()).getId();
+                assertNull(session.translateClientbound(input, output, id), packet.getClass().getSimpleName());
+                assertEquals(0, output.readableBytes());
+            } finally {
+                input.release();
+                output.release();
+            }
+        }
+    }
+
+    @Test
+    void v1001TranslatorIsRegisteredForThe944Downgrade() {
+        assertEquals(List.of(Protocol1001to944.class), classes(ProtocolInfo.getTranslators(1001, 944)));
+        final List<ProtocolToProtocol> chain = ProtocolInfo.getTranslators(1001, 332);
+        assertEquals(Protocol1001to944.class, chain.getFirst().getClass());
+        assertEquals(Protocol340to332.class, chain.getLast().getClass());
+        assertTrue(chain.stream().anyMatch(translator -> translator instanceof Protocol354to340));
+        assertTrue(chain.stream().anyMatch(translator -> translator instanceof Protocol361to354));
     }
 }

@@ -2,11 +2,13 @@ package oxy.geyser.reversion;
 
 import org.cloudburstmc.protocol.bedrock.codec.BedrockCodec;
 import org.cloudburstmc.protocol.bedrock.data.EncodingSettings;
-import org.geysermc.geyser.network.GameProtocol;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import oxy.geyser.reversion.config.Config;
+import oxy.geyser.reversion.ouranos.ProtocolInfo;
+import oxy.geyser.reversion.ouranos.translators.new_to_old.v1001to944.Protocol1001to944;
 import oxy.geyser.reversion.util.BridgeCodecSelector;
+import oxy.geyser.reversion.util.GeyserApiCompat;
 import oxy.geyser.reversion.util.TranslationFailures;
 
 import java.io.IOException;
@@ -37,13 +39,10 @@ class GeyserCompatibilityTest {
     static final String UPDATE_SNAPSHOTS_PROPERTY = "reversion.updateSnapshots";
     static final Path FIXTURE_DIR = Path.of("src", "test", "resources", "compatibility");
     static final String GEYSER_PROTOCOLS_FIXTURE = "geyser-protocols.txt";
-    static final List<String> GEYSER_SERVER_CANDIDATES = List.of(
-            "org.geysermc.geyser.network.netty.GeyserServer",
-            "org.geysermc.geyser.netty.GeyserServer");
 
     static List<Integer> runtimeSupportedProtocols() {
         Set<Integer> protocols = new TreeSet<>();
-        for (int protocol : GameProtocol.SUPPORTED_BEDROCK_PROTOCOLS) {
+        for (int protocol : GeyserApiCompat.supportedBedrockProtocols()) {
             protocols.add(protocol);
         }
         return List.copyOf(protocols);
@@ -71,37 +70,76 @@ class GeyserCompatibilityTest {
                             + ". Otherwise revert the Geyser version change.");
 
             for (int protocol : pinned) {
-                BedrockCodec codec = GameProtocol.getBedrockCodec(protocol);
+                BedrockCodec codec = GeyserApiCompat.getBedrockCodec(protocol);
                 assertNotNull(codec, "Snapshot lists protocol " + protocol
-                        + " but GameProtocol.getBedrockCodec(" + protocol + ") returned null");
+                        + " but Geyser's GameProtocol.getBedrockCodec(" + protocol + ") returned null");
                 assertEquals(protocol, codec.getProtocolVersion(),
-                        "GameProtocol.getBedrockCodec(" + protocol + ") returned protocol "
+                        "Geyser's GameProtocol.getBedrockCodec(" + protocol + ") returned protocol "
                                 + codec.getProtocolVersion());
             }
         }
 
         for (int protocol : runtime) {
-            BedrockCodec codec = GameProtocol.getBedrockCodec(protocol);
-            assertNotNull(codec, "GameProtocol.SUPPORTED_BEDROCK_PROTOCOLS lists " + protocol
+            BedrockCodec codec = GeyserApiCompat.getBedrockCodec(protocol);
+            assertNotNull(codec, "Geyser's GameProtocol lists " + protocol
                     + " but getBedrockCodec(" + protocol + ") returned null");
             assertEquals(protocol, codec.getProtocolVersion(),
-                    "GameProtocol.getBedrockCodec(" + protocol + ") returned protocol " + codec.getProtocolVersion());
+                    "Geyser's GameProtocol.getBedrockCodec(" + protocol + ") returned protocol "
+                            + codec.getProtocolVersion());
         }
     }
 
     @Test
     void bridgeProtocolStillSupported() {
-        assertNotNull(GameProtocol.getBedrockCodec(944),
-                "Pinned Geyser no longer supports bridge protocol 944; the bridge protocol must be bumped together "
-                        + "with the pinned Geyser version in build.gradle and a matching vanilla/v944 data set.");
+        // Nothing in this test may assert which protocols the pinned Geyser happens to list: that set moves
+        // with every upstream build, and the assertions used to encode it only broke on a version bump.
+        // What must hold at every pin is:
+        //   1. the bridge is the highest protocol that is both Geyser-supported and registered in
+        //      ProtocolInfo with exact mapping data, and
+        //   2. Ouranos registers no protocol above that bridge, so the bridge is a hard ceiling and every
+        //      client Geyser can reach is either the bridge itself or a downgrade target below it.
+        assertTrue(ProtocolInfo.getTranslators(1001, 944).stream()
+                        .anyMatch(Protocol1001to944.class::isInstance),
+                "The 1001 -> 944 downgrade chain must stay registered; Ouranos relies on it to serve Bedrock "
+                        + "protocols the pinned Geyser no longer speaks natively.");
+        assertNotNull(ProtocolInfo.getPacketCodec(944),
+                "Protocol 944 must stay registered as a downgrade target");
+        assertTrue(BridgeCodecSelector.hasMappingData(944),
+                "Protocol 944 must keep its exact vanilla/v944 mapping data");
 
         Optional<BedrockCodec> bridge = BridgeCodecSelector.select(DuplicatedProtocolInfo.getPacketCodecs(),
-                protocol -> GameProtocol.getBedrockCodec(protocol) != null,
+                protocol -> GeyserApiCompat.getBedrockCodec(protocol) != null,
                 BridgeCodecSelector::hasMappingData);
         assertTrue(bridge.isPresent(),
                 "No shared bridge codec between Ouranos mappings and the pinned Geyser; bridge selection returned empty.");
-        assertEquals(944, bridge.get().getProtocolVersion(),
-                "Bridge selection changed; expected 944 but selected " + bridge.get().getProtocolVersion());
+        int selected = bridge.get().getProtocolVersion();
+
+        // Invariant 1. expectedSharedBridge() derives the shared protocol from Geyser's own list without
+        // going through BridgeCodecSelector, so the two cannot agree by construction.
+        int expectedBridge = CodecRegressionTest.expectedSharedBridge();
+        assertEquals(expectedBridge, selected,
+                "The selected bridge (" + selected + ") must be the highest protocol that is both supported by the "
+                        + "pinned Geyser and registered in ProtocolInfo with exact mapping data (" + expectedBridge
+                        + "), not a hardcoded protocol number");
+        assertNotNull(GeyserApiCompat.getBedrockCodec(selected),
+                "the selected bridge protocol must be one the pinned Geyser supports natively");
+        assertTrue(BridgeCodecSelector.hasMappingData(selected),
+                "the selected bridge protocol must ship Ouranos mapping data");
+        assertTrue(selected <= runtimeSupportedProtocols().get(0),
+                "the bridge must be the newest protocol both sides share, so the pinned Geyser's lowest supported "
+                        + "protocol (" + runtimeSupportedProtocols().get(0) + ") must be covered by Ouranos");
+
+        // Invariant 2.
+        List<Integer> registeredAboveBridge = ProtocolInfo.getPacketCodecs().stream()
+                .map(BedrockCodec::getProtocolVersion)
+                .filter(protocol -> protocol > selected)
+                .sorted()
+                .toList();
+        assertTrue(registeredAboveBridge.isEmpty(),
+                () -> "Ouranos registers protocol(s) " + registeredAboveBridge + " above the bridge " + selected
+                        + ". A protocol above the bridge is not covered by the bridge codec's mappings, so clients on it "
+                        + "would be translated with mappings that were never verified for it. Either add the downgrade "
+                        + "chain that reaches " + selected + " or re-check the bridge selection.");
     }
 
     @Test
@@ -126,21 +164,16 @@ class GeyserCompatibilityTest {
 
     @Test
     void geyserServerInternalsMatchReflectionExpectations() {
-        Class<?> serverClass = null;
-        for (String candidate : GEYSER_SERVER_CANDIDATES) {
-            try {
-                serverClass = Class.forName(candidate, false, GeyserCompatibilityTest.class.getClassLoader());
-                break;
-            } catch (ClassNotFoundException ignored) {
-            }
-        }
-        if (serverClass == null) {
-            fail("Could not resolve Geyser's server class. Candidate FQCNs tried: " + GEYSER_SERVER_CANDIDATES
-                    + ". GeyserReversion reflects on this class to restart the Bedrock listener; update the "
-                    + "candidate list and GeyserReversion's reflection targets for the pinned Geyser version.");
-        }
+        // Geyser 2.11.3-SNAPSHOT renamed the server class to network.RaknetServer and moved GameProtocol to
+        // network.bedrock; GeyserReversion reflects on that server class to restart the Bedrock listener.
+        // The candidate FQCNs live in GeyserApiCompat only, so this test resolves through production code:
+        // a second copy here would drift silently and would not prove that GeyserApiCompat still loads.
+        Class<?> resolved = assertDoesNotThrow(GeyserApiCompat::raknetServerClass,
+                () -> "GeyserApiCompat.raknetServerClass() could not resolve Geyser's server class. "
+                        + "GeyserReversion reflects on this class to restart the Bedrock listener, so extend the "
+                        + "SERVER_CANDIDATES list in GeyserApiCompat for the pinned Geyser version (it still carries "
+                        + "the 2.11.2 fallback org.geysermc.geyser.network.netty.GeyserServer).");
 
-        Class<?> resolved = serverClass;
         assertPrivateField(resolved, "bootstrapFutures", io.netty.channel.ChannelFuture[].class);
         assertPrivateField(resolved, "group", io.netty.channel.EventLoopGroup.class);
         assertPrivateField(resolved, "childGroup", io.netty.channel.EventLoopGroup.class);

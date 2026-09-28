@@ -35,10 +35,9 @@ import org.cloudburstmc.protocol.bedrock.BedrockPeer;
 import org.cloudburstmc.protocol.bedrock.BedrockServerSession;
 import org.cloudburstmc.protocol.bedrock.netty.initializer.BedrockServerInitializer;
 import org.geysermc.geyser.GeyserImpl;
-import org.geysermc.geyser.network.GeyserBedrockPeer;
-import org.geysermc.geyser.network.InvalidPacketHandler;
 import org.geysermc.geyser.session.GeyserSession;
 import oxy.geyser.reversion.handler.TranslatorPacketHandler;
+import oxy.geyser.reversion.util.GeyserApiCompat;
 
 public class TranslatorServerInitializer extends BedrockServerInitializer {
     private final GeyserImpl geyser;
@@ -68,7 +67,7 @@ public class TranslatorServerInitializer extends BedrockServerInitializer {
 
             if (!bedrockServerSession.isSubClient()) {
                 Channel channel = bedrockServerSession.getPeer().getChannel();
-                channel.pipeline().addAfter(BedrockPeer.NAME, InvalidPacketHandler.NAME, new InvalidPacketHandler(session));
+                channel.pipeline().addAfter(BedrockPeer.NAME, GeyserApiCompat.invalidPacketHandlerName(), GeyserApiCompat.createInvalidPacketHandler(session));
             }
 
             bedrockServerSession.setPacketHandler(new TranslatorPacketHandler(this.geyser, session));
@@ -81,6 +80,6 @@ public class TranslatorServerInitializer extends BedrockServerInitializer {
 
     @Override
     protected BedrockPeer createPeer(Channel channel) {
-        return new GeyserBedrockPeer(channel, this::createSession);
+        return GeyserApiCompat.createGeyserBedrockPeer(channel, this::createSession);
     }
 }

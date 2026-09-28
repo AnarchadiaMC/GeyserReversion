@@ -8,9 +8,9 @@ import org.cloudburstmc.protocol.bedrock.codec.BedrockCodec;
 import org.cloudburstmc.protocol.bedrock.codec.v944.Bedrock_v944;
 import org.cloudburstmc.protocol.bedrock.data.inventory.ContainerType;
 import org.cloudburstmc.protocol.bedrock.packet.*;
-import org.geysermc.geyser.network.GameProtocol;
 import org.junit.jupiter.api.*;
 import oxy.geyser.reversion.util.BridgeCodecSelector;
+import oxy.geyser.reversion.util.GeyserApiCompat;
 import java.util.*;
 import java.util.stream.Stream;
 import static org.junit.jupiter.api.Assertions.*;
@@ -38,9 +38,29 @@ class CodecRegressionTest {
     @Test
     void bridgeIsActuallySupportedByGeyser() {
         var bridge = BridgeCodecSelector.select(DuplicatedProtocolInfo.getPacketCodecs(),
-                protocol -> GameProtocol.getBedrockCodec(protocol) != null,
+                protocol -> GeyserApiCompat.getBedrockCodec(protocol) != null,
                 BridgeCodecSelector::hasMappingData);
-        assertEquals(944, bridge.orElseThrow().getProtocolVersion());
+        int selected = bridge.orElseThrow().getProtocolVersion();
+        assertEquals(expectedSharedBridge(), selected,
+                "Bridge selection must be the highest protocol the pinned Geyser and Ouranos mapping data share");
+        assertNotNull(GeyserApiCompat.getBedrockCodec(selected),
+                "the selected bridge protocol must be one the pinned Geyser actually supports");
+        assertTrue(BridgeCodecSelector.hasMappingData(selected),
+                "the selected bridge protocol must ship Ouranos mapping data");
+    }
+
+    /**
+     * Highest protocol the pinned Geyser and the checked-in Ouranos mapping data share, derived
+     * independently of {@link BridgeCodecSelector#select} so the two cannot agree by construction.
+     */
+    static int expectedSharedBridge() {
+        return Arrays.stream(GeyserApiCompat.supportedBedrockProtocols())
+                .filter(ProtocolInfo.getPacketCodecs().stream()
+                        .map(org.cloudburstmc.protocol.bedrock.codec.BedrockCodec::getProtocolVersion)
+                        .collect(java.util.stream.Collectors.toSet())::contains)
+                .filter(BridgeCodecSelector::hasMappingData)
+                .max()
+                .orElseThrow(() -> new AssertionError("no protocol is shared between the pinned Geyser and Ouranos"));
     }
 
     @Test

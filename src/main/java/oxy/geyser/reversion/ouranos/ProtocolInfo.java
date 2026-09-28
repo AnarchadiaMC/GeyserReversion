@@ -92,6 +92,7 @@ import org.cloudburstmc.protocol.bedrock.codec.v860.Bedrock_v860;
 import org.cloudburstmc.protocol.bedrock.codec.v898.Bedrock_v898;
 import org.cloudburstmc.protocol.bedrock.codec.v924.Bedrock_v924;
 import org.cloudburstmc.protocol.bedrock.codec.v944.Bedrock_v944;
+import org.cloudburstmc.protocol.bedrock.codec.v1001.Bedrock_v1001;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -105,6 +106,9 @@ public final class ProtocolInfo {
     }
 
     static {
+        // 1.26.30 (26.30) - top bridge for Geyser 2.11.3+
+        addPacketCodec(Bedrock_v1001.CODEC, 271, new oxy.geyser.reversion.ouranos.translators.new_to_old.v1001to944.Protocol1001to944(), null);
+
         // 1.26.x
         addPacketCodec(Bedrock_v944.CODEC, 251);
         addPacketCodec(Bedrock_v924.CODEC, 251);
@@ -114,7 +118,7 @@ public final class ProtocolInfo {
         addPacketCodec(Bedrock_v860.CODEC, 251);
         addPacketCodec(Bedrock_v859.CODEC, 251);
 
-        addPacketCodec(Bedrock_v844.CODEC, 241, new Protocol844to827(), null);
+        addPacketCodec(Bedrock_v844.CODEC, 251, new Protocol844to827(), null);
         addPacketCodec(Bedrock_v827.CODEC, 241);
         addPacketCodec(Bedrock_v819.CODEC, 231);
         addPacketCodec(Bedrock_v818.CODEC, 231, new Protocol818to800(), null);

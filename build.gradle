@@ -5,7 +5,7 @@ plugins {
 }
 
 group = 'oxy.geyser.reversion'
-version = '1.0.5'
+version = '1.1.0'
 
 java {
     toolchain {
@@ -16,10 +16,25 @@ java {
 repositories {
     mavenCentral()
     // Hosts the Geyser/Cloudburst unique snapshot artifacts (protocol BetaX) and their sources.
-    // Fetches for timestamped versions such as 3.0.0.Beta13-20260824.114016-17 are served from
+    // Fetches for timestamped versions such as 3.0.0.Beta13-20260927.160519-32 are served from
     // the 3.0.0.Beta13-SNAPSHOT/ directory, which this repository exposes.
     maven { url = "https://repo.opencollab.dev/main/" }
 }
+
+// Upstream pins. Geyser and Cloudburst protocol publish unique snapshots only, so the plain
+// 2.11.3-SNAPSHOT / 3.0.0.Beta13-SNAPSHOT coordinates resolve to "whatever is newest" and a
+// rebuild can silently change the supported protocol set, the bridge codec, the packet layouts
+// and the sourceRelease payload. The values below are the exact immutable builds of
+// Geyser 2.11.3-b1247 (git 63a4e2b79) and its Cloudburst protocol Beta13 stream, i.e. the
+// version set this extension is validated against. Each artifact is served from the
+// <artifact>/<baseVersion>-SNAPSHOT/ directory under its timestamped file name, so a pinned
+// coordinate always yields the same bytes.
+// To bump: read the maven-metadata.xml of each *-SNAPSHOT directory on
+// https://repo.opencollab.dev/main/ (org/geysermc/geyser/core, org/geysermc/geyser/api and the
+// three org/cloudburstmc/protocol modules) and update every reference below in one commit, then
+// re-run `gradlew printResolvedPins` and the test suite.
+def geyserPin = '2.11.3-20260925.135253-13'
+def cloudburstProtocolPin = '3.0.0.Beta13-20260927.160519-32'
 
 configurations {
     correspondingDependencySources {
@@ -29,6 +44,19 @@ configurations {
     legacyDataTools {
         canBeConsumed = false
         canBeResolved = true
+    }
+    // Geyser core and the protocol modules declare each other as SNAPSHOT in their metadata, so
+    // pinning only the direct coordinates would still leave geyser api/common and the sibling
+    // protocol modules floating. This rule drags every module of those two groups onto the same
+    // immutable build, whether it was requested as -SNAPSHOT or already timestamped.
+    configureEach {
+        resolutionStrategy.eachDependency { details ->
+            if (details.requested.group == 'org.geysermc.geyser') {
+                details.useVersion(geyserPin)
+            } else if (details.requested.group == 'org.cloudburstmc.protocol') {
+                details.useVersion(cloudburstProtocolPin)
+            }
+        }
     }
 }
 
@@ -57,28 +85,28 @@ dependencies {
     correspondingDependencySources 'org.cloudburstmc.fastutil.commons:object-common:8.5.15:sources'
     correspondingDependencySources 'org.cloudburstmc.fastutil.commons:long-common:8.5.15:sources'
     correspondingDependencySources 'org.cloudburstmc.fastutil.commons:int-common:8.5.15:sources'
-    correspondingDependencySources 'org.cloudburstmc.protocol:bedrock-codec:3.0.0.Beta13-20260824.114016-17:sources'
-    correspondingDependencySources 'org.cloudburstmc.protocol:common:3.0.0.Beta13-20260824.114016-17:sources'
-    correspondingDependencySources 'org.cloudburstmc.protocol:bedrock-connection:3.0.0.Beta13-20260824.114016-17:sources'
+    correspondingDependencySources "org.cloudburstmc.protocol:bedrock-codec:${cloudburstProtocolPin}:sources"
+    correspondingDependencySources "org.cloudburstmc.protocol:common:${cloudburstProtocolPin}:sources"
+    correspondingDependencySources "org.cloudburstmc.protocol:bedrock-connection:${cloudburstProtocolPin}:sources"
 
     // Offline generator for the legacy per-protocol data directories; never bundled into the JAR.
     legacyDataTools("org.cloudburstmc:nbt:3.0.5.Final")
     legacyDataTools("com.google.code.gson:gson:2.13.2")
 
-    compileOnly("org.geysermc.geyser:core:2.11.2-20260910.131131-9") {
+    compileOnly("org.geysermc.geyser:core:${geyserPin}") {
         exclude group: "com.google.code.gson", module: "gson"
     }
     // Geyser provides this at runtime; the extension directly uses its listener options.
     compileOnly("org.cloudburstmc.netty:netty-transport-raknet:1.1.0.CR1-20260820.174333-6")
-    // Provided by the Geyser runtime. Pinned to the exact Beta13 build that Geyser core 2.11.2
-    // depends on so the Beta13 API surface is the compile classpath (never bundled).
-    compileOnly("org.cloudburstmc.protocol:bedrock-codec:3.0.0.Beta13-20260824.114016-17")
-    compileOnly("org.cloudburstmc.protocol:common:3.0.0.Beta13-20260824.114016-17")
-    compileOnly("org.cloudburstmc.protocol:bedrock-connection:3.0.0.Beta13-20260824.114016-17")
+    // Provided by the Geyser runtime. Pinned to the exact Beta13 build that Geyser core
+    // ${geyserPin} depends on so the Beta13 API surface is the compile classpath (never bundled).
+    compileOnly("org.cloudburstmc.protocol:bedrock-codec:${cloudburstProtocolPin}")
+    compileOnly("org.cloudburstmc.protocol:common:${cloudburstProtocolPin}")
+    compileOnly("org.cloudburstmc.protocol:bedrock-connection:${cloudburstProtocolPin}")
     compileOnly("org.projectlombok:lombok:1.18.36")
     annotationProcessor("org.projectlombok:lombok:1.18.36")
 
-    testImplementation("org.geysermc.geyser:core:2.11.2-20260910.131131-9")
+    testImplementation("org.geysermc.geyser:core:${geyserPin}")
     testImplementation(platform("org.junit:junit-bom:5.11.4"))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
@@ -105,6 +133,50 @@ dependencies {
     implementation("org.cloudburstmc.fastutil.commons:long-common:8.5.15")
     implementation("org.cloudburstmc.fastutil.commons:int-common:8.5.15")
 }
+
+// Diagnostics only: prints the upstream builds that the compile classpath actually resolved to,
+// so every build log records the Geyser core and Cloudburst protocol versions a jar was cut from.
+// It reads the resolution result that Gradle already computed, forces no extra resolution and
+// swallows failures, so it can never break a build.
+def logPinsReported = false
+def reportResolvedPins = { boolean force = false ->
+    if (logPinsReported && !force) {
+        return
+    }
+    def reported = [
+            'org.geysermc.geyser:core',
+            'org.cloudburstmc.protocol:bedrock-codec',
+            'org.cloudburstmc.protocol:common',
+            'org.cloudburstmc.protocol:bedrock-connection',
+    ]
+    try {
+        def resolved = [:]
+        configurations.compileClasspath.incoming.resolutionResult.allComponents.each { component ->
+            def module = component.moduleVersion
+            if (module != null) {
+                resolved["${module.group}:${module.name}".toString()] = module.version.toString()
+            }
+        }
+        logPinsReported = true
+        println 'Resolved upstream pins (compileClasspath):'
+        reported.each { coordinate ->
+            def version = resolved[coordinate]
+            println "  ${coordinate}:${version != null ? version : 'NOT RESOLVED'}"
+        }
+    } catch (Exception e) {
+        println "printResolvedPins: could not read the compile classpath resolution result: ${e.message}"
+    }
+}
+
+tasks.register('printResolvedPins') {
+    description = 'Prints the resolved Geyser core and Cloudburst protocol versions on the compile classpath.'
+    group = 'help'
+    doLast { reportResolvedPins(true) }
+}
+
+// Fires on its own whenever a build resolves the compile classpath, so the pins land in the log
+// without anybody having to ask for them.
+configurations.compileClasspath.incoming.afterResolve { reportResolvedPins() }
 
 shadowJar {
     dependencies {

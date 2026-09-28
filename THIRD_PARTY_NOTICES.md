@@ -1,6 +1,8 @@
 # Licensing and third-party notices
 
-Compatibility modifications: siberanka, 2026-09-15. Original copyrights,
+Compatibility modifications: siberanka, 2026-09-15. Documentation and reference
+refresh: 2026-09-27; every reference row below was re-checked against the files
+actually checked in. Original copyrights,
 license texts, contributor history and notices are retained. No warranty is
 provided. Redistribution is permitted subject to the respective licenses;
 this fork does not claim original authorship or impose additional restrictions.
@@ -13,10 +15,11 @@ this fork does not claim original authorship or impose additional restrictions.
 | Copied Geyser packet handlers/initializer | Copyright 2019-2022 GeyserMC; current adaptations remain attributed | MIT, full notices in copied Java headers and `META-INF/licenses/Geyser-MIT.txt` |
 | ClassLoaderPriorityUtil adaptation | Copyright 2021-2025 RK_01 / RaphiMC and ViaProxy contributors | GPL-3.0-or-later, full source notice retained |
 | BedrockData resource collection | IdotClub/BedrockData and original data contributors | LGPL-2.1 collection; per-version CC0 notices in `src/main/resources/vanilla/` take precedence for those data sets |
+| `vanilla/v1001` mapping data (1.26.30, protocol 1001) | derived from pmmp/BedrockData tag `bedrock-1.26.30` (commit `bdb44a48fb6beffb6e9f6864f06d2232eb62b6a3`) and pmmp/BedrockData contributors | the pmmp/BedrockData repository is LGPL-3.0, and the per-version data directories carry their own CC0-1.0 license file that takes precedence for these data sets: `src/main/resources/vanilla/v1001/LICENSE` (byte-identical to the `v944`, `v924` and `v898` copies) together with `src/main/resources/vanilla/v1001/README.md`; file sizes and SHA-256 sums plus the pinned tag and commit in `docs/LEGACY-DATA.md` |
 | Legacy converter inputs, BedrockData tags 1.9.0/1.10.0/1.11.0 | pmmp/BedrockData contributors | LGPL-3.0, `tools/legacy-data-converter/data/BedrockData/LICENSE`; pinned revisions and checksums in `docs/LEGACY-DATA.md` |
 | Legacy converter inputs, block palettes 1.9/1.10/1.12 | pmmp/BedrockBlockPaletteArchive (now opencollab-incubator) contributors | CC0-1.0, `tools/legacy-data-converter/data/BedrockBlockPaletteArchive/LICENSE` |
 | Generated legacy data `vanilla/v332`, `v340`, `v354` | derived from the two rows above by `tools/legacy-data-converter` | BedrockData-derived files LGPL-3.0, palette-derived files CC0-1.0; per-file SHA-256 in each `manifest.sha256` |
-| Item/block upgrade schemas | pmmp/BedrockItemUpgradeSchema, pmmp/BedrockBlockUpgradeSchema contributors | CC0-1.0, `src/main/resources/schema/LICENSE` and `src/main/resources/block_schema/LICENSE` |
+| Item/block upgrade schemas | pmmp/BedrockItemUpgradeSchema (now opencollab-incubator/BedrockItemUpgradeSchema), pmmp/BedrockBlockUpgradeSchema contributors | CC0-1.0, `src/main/resources/schema/LICENSE` and `src/main/resources/block_schema/LICENSE`; the vendored `id_meta_upgrade_schema` set now runs `0001`–`0271`, with `0251`, `0261` and `0271` added for the 1.26.x item renames; the pinned upstream commits, SHA-256 sums and which registered protocol uses which schema id are listed in `docs/LEGACY-DATA.md` |
 | Cloudburst Protocol | CloudburstMC contributors | Apache-2.0; upstream sources at https://github.com/CloudburstMC/Protocol |
 | StateUpdater common/block-updater | AllayMC contributors | LGPL-3.0, `META-INF/licenses/StateUpdater-LGPL-3.0.txt`; https://github.com/AllayMC/StateUpdater |
 | Jackson modules | FasterXML contributors | Apache-2.0, upstream notices included in dependency artifacts |

@@ -11,9 +11,9 @@ import org.cloudburstmc.protocol.bedrock.codec.BedrockCodec;
 import org.cloudburstmc.protocol.bedrock.netty.initializer.BedrockClientInitializer;
 import org.cloudburstmc.protocol.bedrock.packet.*;
 import org.cloudburstmc.protocol.common.PacketSignal;
-import org.geysermc.geyser.network.GameProtocol;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
+import oxy.geyser.reversion.util.GeyserApiCompat;
 import java.net.InetSocketAddress;
 import java.util.concurrent.*;
 import java.util.stream.Stream;
@@ -25,7 +25,7 @@ class LocalNetworkNegotiationTest {
     @TestFactory
     Stream<DynamicTest> legacyAndNativeClientsNegotiateOnLocalGeyser() {
         return Stream.concat(DuplicatedProtocolInfo.getPacketCodecs().stream(),
-                        GameProtocol.SUPPORTED_BEDROCK_PROTOCOLS.intStream().mapToObj(GameProtocol::getBedrockCodec))
+                        java.util.Arrays.stream(GeyserApiCompat.supportedBedrockProtocols()).mapToObj(GeyserApiCompat::getBedrockCodec))
                 .filter(c -> c.getProtocolVersion() >= 554)
                 .collect(java.util.stream.Collectors.toMap(BedrockCodec::getProtocolVersion, c -> c, (a, b) -> b))
                 .values().stream().map(codec -> DynamicTest.dynamicTest("loopback negotiation " + codec.getProtocolVersion(), () -> {

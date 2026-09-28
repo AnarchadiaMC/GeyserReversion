@@ -1,5 +1,26 @@
 # Local validation report — 15 September 2026
 
+> **Superseded in part (27 September 2026).** This report is a historical record
+> of the 1.0.5 run and is left unedited, including every number below. The
+> following claims are now stale and must not be quoted as current:
+>
+> - the shared bridge `944 / 26.10` — the bridge is now `1001 / 26.30`, with
+>   `Protocol1001to944` as the downgrade step to 944;
+> - `Geyser 2.11.2 build 1235` — the build is now pinned to Geyser
+>   `2.11.3-20260925.135253-13` (server build 2.11.3-b1247, git `63a4e2b79`) with
+>   Cloudburst Protocol `3.0.0.Beta13-20260927.160519-32`, both pinned exactly in
+>   `build.gradle`;
+> - `54 registered protocols` — 58 are registered now, 332 through 1001, after
+>   adding 332, 340, 354 and 1001.
+>
+> Current state and the authoritative per-suite counts live in
+> [COMPATIBILITY.md](COMPATIBILITY.md) and in the current
+> `build/test-results/test/*.xml`; the most recent local test run recorded
+> there (2026-09-27) reported 742 tests, 0 failures, 0 errors and 1 skipped
+> test across 13 suites, the skip being the opt-in live network negotiation.
+> The smoke-test section below still describes a real run
+> of 1.0.5 on 2.11.2 build 1235 and has not been repeated against 2.11.3.
+
 Release candidate: GeyserReversion 1.0.5, built with Temurin Java 21.0.9.
 All checks below ran locally; no GitHub Actions, GitLab CI/CD, or hosted runner
 was used.

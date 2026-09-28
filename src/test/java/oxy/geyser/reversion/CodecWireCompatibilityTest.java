@@ -41,12 +41,15 @@ import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestFactory;
+import oxy.geyser.reversion.ouranos.ProtocolInfo;
 import oxy.geyser.reversion.ouranos.session.SpecialOuranosSession;
 import oxy.geyser.reversion.session.GeyserTranslatedUser;
 import oxy.geyser.reversion.util.BridgeCodecSelector;
 import oxy.geyser.reversion.util.CodecUtil;
+import oxy.geyser.reversion.util.GeyserApiCompat;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
@@ -83,7 +86,26 @@ import static org.junit.jupiter.api.Assertions.fail;
  */
 @Tag("hermetic")
 class CodecWireCompatibilityTest {
-    static final int BRIDGE_PROTOCOL = 944;
+    /**
+     * The bridge the runtime actually selects: the newest Bedrock protocol the pinned Geyser and
+     * the checked-in Ouranos mapping data share. Derived from both sides' own data instead of
+     * {@link BridgeCodecSelector#select}, so the wire expectations below cannot agree with the
+     * selector by construction. It moves with the Geyser pin and the vanilla data (1001 on both
+     * Geyser 2.11.2 and 2.11.3, which register exact vanilla/v1001 mapping data).
+     */
+    static final int BRIDGE_PROTOCOL = derivedBridgeProtocol();
+
+    private static int derivedBridgeProtocol() {
+        int[] geyserProtocols = GeyserApiCompat.supportedBedrockProtocols();
+        return ProtocolInfo.getPacketCodecs().stream()
+                .map(BedrockCodec::getProtocolVersion)
+                .filter(protocol -> Arrays.stream(geyserProtocols).anyMatch(supported -> supported == protocol))
+                .filter(BridgeCodecSelector::hasMappingData)
+                .max(Integer::compare)
+                .orElseThrow(() -> new AssertionError("no Bedrock protocol is shared between the pinned Geyser ("
+                        + Arrays.toString(geyserProtocols) + ") and the checked-in Ouranos mapping data"));
+    }
+
     static final UUID RECIPE_UUID = new UUID(0, 42);
     static final List<String> ITEM_IDENTIFIERS = List.of(
             "minecraft:stone", "minecraft:crafting_table", "minecraft:chest");
@@ -95,6 +117,8 @@ class CodecWireCompatibilityTest {
     }
 
     static BedrockCodec bridgeCodec() {
+        // DuplicatedProtocolInfo mirrors ProtocolInfo's catalogue (parity is asserted by
+        // CodecRegressionTest.codecCatalogsAreIdenticalAndHaveNoDuplicateProtocols).
         return Objects.requireNonNull(DuplicatedProtocolInfo.getPacketCodec(BRIDGE_PROTOCOL),
                 "missing bridge codec " + BRIDGE_PROTOCOL);
     }
@@ -485,6 +509,9 @@ class CodecWireCompatibilityTest {
                     "serverbound helper for protocol " + protocol);
         }
 
+        // Client-side sample protocols only: each one is constructed against BRIDGE_PROTOCOL as the
+        // target. 944 stays in this list as a registered legacy client (it is no longer the bridge),
+        // and the bridge protocol itself is covered by the end-to-end proof below.
         for (int protocol : List.of(361, 419, 575, 844, 944)) {
             GeyserTranslatedUser user = new GeyserTranslatedUser(protocol, BRIDGE_PROTOCOL, null);
             assertSame(EncodingSettings.CLIENT, user.getCloudburstClientCodecHelper().getEncodingSettings(),
