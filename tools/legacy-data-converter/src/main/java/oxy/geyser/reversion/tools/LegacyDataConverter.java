@@ -28,6 +28,7 @@ import java.util.TreeSet;
 public final class LegacyDataConverter {
     private static final String PALETTE_ARCHIVE = "BedrockBlockPaletteArchive";
     private static final String BEDROCK_DATA = "BedrockData";
+    private static final String REQUIRED_STATES_FILE = "required_block_states.json";
     private static final List<String> DEFAULT_MODES = List.of("v332", "v340", "v354");
     private static final List<String> GENERATED_FILES = List.of(
             "canonical_block_states.nbt",
@@ -35,6 +36,48 @@ public final class LegacyDataConverter {
             "block_id_map.json",
             "biome_id_map.json",
             "biome_definitions.json");
+    private static final List<String> V354_GENERATED_FILES = List.of(
+            "canonical_block_states.nbt",
+            "item_id_map.json",
+            "block_id_map.json",
+            REQUIRED_STATES_FILE,
+            "biome_id_map.json",
+            "biome_definitions.json");
+
+    // Union names from the PMMP 1.11 inputs that the v361 oracle does not contain. Exactly 17 are
+    // expected: 12 are case-only variants of an oracle name (the oracle uses the all-lowercase
+    // spelling) and 5 are pre-1.13 block renames (stone_slab* -> double_stone_slab*,
+    // concretePowder -> concrete_powder). Any other absent name is a hard failure, and an
+    // allowlisted name that starts resolving in the oracle is a hard failure too.
+    // Keep this list, EXPECTED_ALLOWLISTED_MISSING and docs/LEGACY-DATA.md in sync.
+    private static final Set<String> ORACLE_MISSING_ALLOWLIST = Set.of(
+            "minecraft:seaLantern",
+            "minecraft:netherStar",
+            "minecraft:tripWire",
+            "minecraft:muttonRaw",
+            "minecraft:muttonCooked",
+            "minecraft:fireworksCharge",
+            "minecraft:emptyMap",
+            "minecraft:carrotOnAStick",
+            "minecraft:appleEnchanted",
+            "minecraft:pistonArmCollision",
+            "minecraft:invisibleBedrock",
+            "minecraft:movingBlock",
+            "minecraft:stone_slab",
+            "minecraft:stone_slab2",
+            "minecraft:stone_slab3",
+            "minecraft:stone_slab4",
+            "minecraft:concretePowder");
+
+    // Expected result of the union item-map build for the pinned PMMP 1.11 inputs and the committed
+    // v361 oracle. buildUnionItemMap fails when any of these differ; update this block and
+    // docs/LEGACY-DATA.md together when the pinned inputs legitimately change.
+    private static final int EXPECTED_UNION_NAMES = 668;
+    private static final int EXPECTED_EMITTED = 689;
+    private static final int EXPECTED_ITEM_IDS_MATCHED = 222;
+    private static final int EXPECTED_BLOCK_IDS_REMAPPED = 210;
+    private static final int EXPECTED_ORACLE_ONLY = 38;
+    private static final int EXPECTED_ALLOWLISTED_MISSING = 17;
 
     public static void main(String[] args) throws Exception {
         Map<String, String> options = parseOptions(args);
@@ -96,7 +139,7 @@ public final class LegacyDataConverter {
         var blockIds = copyJson(files.blockIdMap11, versionDir.resolve("block_id_map.json"));
         var biomeIdMap = companion(files, outputRoot, "biome_id_map.json", versionDir);
         var biomeDefinitions = companion(files, outputRoot, "biome_definitions.json", versionDir);
-        writeManifest(versionDir);
+        writeManifest(versionDir, GENERATED_FILES);
         return new VersionReport("v332", palette.blocks(), palette.states(), items.emitted(), blockIds,
                 items.mismatches(), palette.source(), items.source(), biomeIdMap, biomeDefinitions);
     }
@@ -110,7 +153,7 @@ public final class LegacyDataConverter {
         var blockIds = copyJson(files.blockIdMap11, versionDir.resolve("block_id_map.json"));
         var biomeIdMap = companion(files, outputRoot, "biome_id_map.json", versionDir);
         var biomeDefinitions = companion(files, outputRoot, "biome_definitions.json", versionDir);
-        writeManifest(versionDir);
+        writeManifest(versionDir, GENERATED_FILES);
         return new VersionReport("v340", palette.blocks(), palette.states(), items.emitted(), blockIds,
                 items.mismatches(), palette.source(), items.source(), biomeIdMap, biomeDefinitions);
     }
@@ -120,12 +163,13 @@ public final class LegacyDataConverter {
         Files.createDirectories(versionDir);
         var palette = mergePalettes(files.palette110, files.palette112, files.requiredBlockStates11,
                 versionDir.resolve("canonical_block_states.nbt"));
+        copyTextNormalized(files.requiredBlockStates11, versionDir.resolve(REQUIRED_STATES_FILE));
         var items = buildUnionItemMap(files.itemMap11, files.blockIdMap11,
                 outputRoot.resolve("v361").resolve("item_id_map.json"), versionDir.resolve("item_id_map.json"));
         var blockIds = copyJson(files.blockIdMap11, versionDir.resolve("block_id_map.json"));
         var biomeIdMap = companion(files, outputRoot, "biome_id_map.json", versionDir);
         var biomeDefinitions = companion(files, outputRoot, "biome_definitions.json", versionDir);
-        writeManifest(versionDir);
+        writeManifest(versionDir, V354_GENERATED_FILES);
         return new VersionReport("v354", palette.blocks(), palette.states(), items.emitted(), blockIds,
                 items.mismatches(), palette.source(), items.source(), biomeIdMap, biomeDefinitions);
     }
@@ -365,6 +409,8 @@ public final class LegacyDataConverter {
 
         TreeMap<String, Integer> emitted = new TreeMap<>();
         List<String> missing = new ArrayList<>();
+        List<String> unexpectedMissing = new ArrayList<>();
+        List<String> staleAllowlist = new ArrayList<>();
         List<String> remapped = new ArrayList<>();
         int itemMatches = 0;
         for (var e : union.entrySet()) {
@@ -372,7 +418,13 @@ public final class LegacyDataConverter {
             Integer oracleId = oracle.get(name);
             if (oracleId == null) {
                 missing.add(name + "=" + e.getValue());
+                if (!ORACLE_MISSING_ALLOWLIST.contains(name)) {
+                    unexpectedMissing.add(name + "=" + e.getValue());
+                }
                 continue;
+            }
+            if (ORACLE_MISSING_ALLOWLIST.contains(name)) {
+                staleAllowlist.add(name);
             }
             Integer itemId = itemMap.get(name);
             if (itemId != null) {
@@ -394,8 +446,33 @@ public final class LegacyDataConverter {
             }
         }
 
+        if (!unexpectedMissing.isEmpty()) {
+            problems.add("union names absent from the v361 oracle that are not on the documented allowlist: "
+                    + unexpectedMissing);
+        }
+        if (!staleAllowlist.isEmpty()) {
+            problems.add("allowlisted union names that now resolve in the v361 oracle; remove them from "
+                    + "ORACLE_MISSING_ALLOWLIST: " + staleAllowlist);
+        }
+        for (var e : emitted.entrySet()) {
+            Integer oracleId = oracle.get(e.getKey());
+            if (!e.getValue().equals(oracleId)) {
+                problems.add("emitted " + e.getKey() + "=" + e.getValue() + " does not resolve to oracle " + oracleId);
+            }
+        }
+        if (!emitted.keySet().equals(oracle.keySet())) {
+            problems.add("emitted name set differs from the v361 oracle name set");
+        }
+        expect(problems, "unionNames", union.size(), EXPECTED_UNION_NAMES);
+        expect(problems, "emitted", emitted.size(), EXPECTED_EMITTED);
+        expect(problems, "itemIdsMatched", itemMatches, EXPECTED_ITEM_IDS_MATCHED);
+        expect(problems, "blockIdsRemapped", remapped.size(), EXPECTED_BLOCK_IDS_REMAPPED);
+        expect(problems, "oracleOnly", oracleOnly, EXPECTED_ORACLE_ONLY);
+        expect(problems, "allowlistedMissing", missing.size(), EXPECTED_ALLOWLISTED_MISSING);
+
         if (!problems.isEmpty()) {
-            System.err.println("FAILED: item map union disagrees with the v361 oracle: " + problems);
+            System.err.println("FAILED: item map union disagrees with the v361 oracle:");
+            problems.forEach(problem -> System.err.println("  " + problem));
             System.exit(3);
         }
 
@@ -410,14 +487,20 @@ public final class LegacyDataConverter {
                 + " itemIdsMatched=" + itemMatches
                 + " blockIdsRemapped=" + remapped.size()
                 + " oracleOnly=" + oracleOnly
-                + " missingFromOracle=" + missing.size());
+                + " allowlistedMissing=" + missing.size());
         if (!missing.isEmpty()) {
-            System.out.println("  reported union names absent from the v361 oracle (renamed before 1.13): " + missing);
+            System.out.println("  allowlisted union names absent from the v361 oracle: " + missing);
         }
         System.out.println("  oracle block-id remaps: "
                 + (remapped.size() > 8 ? remapped.subList(0, 8) + " ..." : remapped));
         return new UnionCounts(union.size(), emitted.size(), missing.size(), problems.size(),
                 itemMapFile.getFileName() + "+" + blockMapFile.getFileName() + " via " + oracleFile.getFileName());
+    }
+
+    private static void expect(List<String> problems, String what, int actual, int expected) {
+        if (actual != expected) {
+            problems.add(what + " expected " + expected + " but was " + actual);
+        }
     }
 
     static Map<String, Integer> readJsonMap(Path file) throws Exception {
@@ -445,9 +528,9 @@ public final class LegacyDataConverter {
         Files.write(dst, text.getBytes(StandardCharsets.UTF_8));
     }
 
-    static void writeManifest(Path versionDir) throws Exception {
+    static void writeManifest(Path versionDir, List<String> generatedFiles) throws Exception {
         StringBuilder manifest = new StringBuilder();
-        for (String name : new TreeSet<>(GENERATED_FILES)) {
+        for (String name : new TreeSet<>(generatedFiles)) {
             manifest.append(sha256(versionDir.resolve(name))).append("  ").append(name).append('\n');
         }
         Files.writeString(versionDir.resolve("manifest.sha256"), manifest.toString(), StandardCharsets.UTF_8);

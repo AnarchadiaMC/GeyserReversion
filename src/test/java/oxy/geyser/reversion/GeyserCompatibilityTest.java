@@ -53,17 +53,16 @@ class GeyserCompatibilityTest {
     void pinnedGeyserProtocolSetUnchanged() throws IOException {
         List<Integer> runtime = runtimeSupportedProtocols();
         Path fixture = FIXTURE_DIR.resolve(GEYSER_PROTOCOLS_FIXTURE);
-        boolean update = Boolean.getBoolean(UPDATE_SNAPSHOTS_PROPERTY);
 
-        if (!Files.exists(fixture)) {
+        if (Boolean.getBoolean(UPDATE_SNAPSHOTS_PROPERTY)) {
             writeProtocolFixture(fixture, runtime);
-            LOGGER.warning("Generated missing Geyser protocol snapshot " + fixture.toAbsolutePath() + " listing "
-                    + runtime + "; commit it and keep it in sync with the pinned Geyser version.");
-        } else if (update) {
-            writeProtocolFixture(fixture, runtime);
-            LOGGER.warning("Rewrote Geyser protocol snapshot " + fixture.toAbsolutePath() + " because -D"
-                    + UPDATE_SNAPSHOTS_PROPERTY + "=true.");
+            LOGGER.warning("Rewrote Geyser protocol snapshot " + fixture.toAbsolutePath() + " listing "
+                    + runtime + " because -D" + UPDATE_SNAPSHOTS_PROPERTY + "=true; commit it and keep it in "
+                    + "sync with the pinned Geyser version.");
         } else {
+            if (!Files.exists(fixture)) {
+                fail(missingFixtureMessage(fixture));
+            }
             List<Integer> pinned = parseProtocols(Files.readAllLines(fixture, StandardCharsets.UTF_8), fixture);
             assertEquals(pinned, runtime,
                     () -> "Pinned Geyser protocol set changed. Snapshot=" + pinned + ", runtime=" + runtime
@@ -203,6 +202,13 @@ class GeyserCompatibilityTest {
         assertTrue(client.maxByteArraySize() > server.maxByteArraySize(),
                 "CLIENT.maxByteArraySize (" + client.maxByteArraySize() + ") must stay above SERVER.maxByteArraySize ("
                         + server.maxByteArraySize() + ")");
+    }
+
+    static String missingFixtureMessage(Path fixture) {
+        return "Missing Geyser protocol snapshot fixture " + fixture.toAbsolutePath()
+                + ". Generate it by re-running the tests with -D" + UPDATE_SNAPSHOTS_PROPERTY + "=true "
+                + "(for Gradle: ./gradlew test -D" + UPDATE_SNAPSHOTS_PROPERTY + "=true, or set "
+                + "JAVA_TOOL_OPTIONS=-D" + UPDATE_SNAPSHOTS_PROPERTY + "=true) and commit the result.";
     }
 
     static void writeProtocolFixture(Path fixture, List<Integer> protocols) throws IOException {

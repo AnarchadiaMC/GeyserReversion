@@ -83,10 +83,14 @@ CLI options: `--output <dir>` and `--source <dir>` are required;
 `--modes v332,v340,v354` is optional and defaults to all three versions.
 Exit codes: `0` success, `2` any required input missing (including the
 `<output>/v361/item_id_map.json` oracle), `3` v354 reconstruction mismatch or
-an item-map/oracle disagreement (an item name whose PMMP 1.11 id differs from
-the oracle, or a duplicate oracle id). The tool refuses to run when an input
-is missing and prints a summary with blocks/states/items counts, the
-v354 count-mismatch total and the union/oracle result for the item map.
+an item-map/oracle disagreement. The item-map step is a hard failure when a
+union name is absent from the oracle without being on the 17-entry allowlist,
+when an allowlisted name starts resolving in the oracle, when an item name's
+PMMP 1.11 id differs from the oracle, when the oracle contains duplicate ids,
+or when any asserted count differs from the pinned expectation. The tool
+refuses to run when an input is missing and prints a summary with
+blocks/states/items counts, the v354 count-mismatch total and the union/oracle
+result for the item map.
 
 ### Per-version algorithms
 
@@ -100,6 +104,10 @@ v354 count-mismatch total and the union/oracle result for the item map.
   `required_block_states.json` is replaced with the `1.10.0.nbt` block of the
   same name. The 1.10 `version` tag is stamped on entries that lack one.
   Result: 460 blocks / 3183 states, 0 count mismatches against PMMP 1.11.
+  The pinned PMMP 1.11 `required_block_states.json` is also copied into the
+  directory (v354 is the only version with such a source; v332/v340 have
+  none), and `LegacyDataConverterValidationTest` asserts that the canonical
+  palette's block-name multiset equals it.
 - `item_id_map.json`: for all three versions the generator emits the union of
   the PMMP 1.11 `item_id_map.json` (229 names, items only) and
   `block_id_map.json` (460 block names), deduplicated by name: 208 item-only
@@ -125,9 +133,10 @@ v354 count-mismatch total and the union/oracle result for the item map.
     these renamed identifiers, so dropping them would shrink coverage below
     the oracle.
   The result is a 689-entry map with 689 distinct ids, identical for v332,
-  v340 and v354 and exactly the oracle's name set. Seventeen PMMP names are
-  reported on every run and cannot be emitted without duplicating an existing
-  id: 12 are case-only variants of oracle entries (`minecraft:seaLantern` vs
+  v340 and v354 and exactly the oracle's name set. Seventeen PMMP names
+  cannot be emitted without duplicating an existing id. They are the
+  converter's documented allowlist and are reported on every run: 12 are
+  case-only variants of oracle entries (`minecraft:seaLantern` vs
   `minecraft:sealantern`, `netherStar`/`netherstar`,
   `muttonRaw`/`muttonraw`, `muttonCooked`/`muttoncooked`,
   `fireworksCharge`/`fireworkscharge`, `emptyMap`/`emptymap`,
@@ -138,6 +147,13 @@ v354 count-mismatch total and the union/oracle result for the item map.
   (`minecraft:stone_slab`..`stone_slab4`, which the oracle spells
   `double_stone_slab`..`double_stone_slab4`, and
   `minecraft:concretePowder`, which the oracle spells `concrete_powder`).
+  Any other union name absent from the oracle is a hard failure (exit 3), as
+  is an allowlisted name that starts resolving in the oracle. The converter
+  also asserts the pinned result on every run: `unionNames=668`,
+  `emitted=689`, `itemIdsMatched=222`, `blockIdsRemapped=210`,
+  `oracleOnly=38` and `allowlistedMissing=17`; a mismatch fails with the
+  expected and actual values. The constants live in one block at the top of
+  `LegacyDataConverter` and must be updated together with this document.
 - `block_id_map.json`: the PMMP 1.11 map (460 entries) for all three
   versions; no per-version maps were published for 1.9/1.10. Its content is
   identical to the repository's `v361` block map (line endings aside).
@@ -153,7 +169,8 @@ v354 count-mismatch total and the union/oracle result for the item map.
 ## Determinism and checksums
 
 Every version directory contains a `manifest.sha256` in standard
-`sha256sum` format listing the five generated files. The NBT writer
+`sha256sum` format listing the generated files: five for v332/v340 and six
+for v354, which additionally ships `required_block_states.json`. The NBT writer
 (`NbtUtils.createNetworkWriter`), the Gson serializer version and the
 `TreeMap` ordering in the item-map union are fixed, so re-running the tool
 against the pinned inputs reproduces byte-identical outputs. To verify a
@@ -183,10 +200,12 @@ Committed palette sums (also recorded in each manifest):
   No 1.9/1.10/1.11 item map that covers block identifiers exists upstream, so
   the oracle (`v361`) supplies the ids and spellings. Twelve camelCase PMMP
   names and five pre-1.13 block names are therefore absent from the emitted
-  map; the generator reports them every run. If a future data source pins the
-  exact 1.11 client spelling and ids, both the oracle resolution and this
-  caveat should be revisited. The oracle ids for non-item blocks are negative
-  because that is the convention the committed Geyser data uses for blocks.
+  map; the generator keeps them on a documented 17-name allowlist, reports
+  them every run, and fails hard if any additional union name is absent or
+  the asserted counts change. If a future data source pins the exact 1.11
+  client spelling and ids, both the oracle resolution and this caveat should
+  be revisited. The oracle ids for non-item blocks are negative because that
+  is the convention the committed Geyser data uses for blocks.
 - The archive's own README notes that the 1.9, 1.10 and 1.12 files are the
   on-disk blockstate palettes, not necessarily the palettes sent over the
   wire. They are the only public source available for this era.

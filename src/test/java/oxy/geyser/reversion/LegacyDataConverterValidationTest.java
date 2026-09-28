@@ -126,6 +126,11 @@ class LegacyDataConverterValidationTest {
             assertTrue(blockStates instanceof NbtMap, "block state " + name + " must have a states compound");
         }
 
+        if (protocol == 354) {
+            assertTrue(Files.exists(dir.resolve(REQUIRED_BLOCKS_FILE)),
+                    "v354 must ship " + REQUIRED_BLOCKS_FILE + " (a copy of the pinned PMMP 1.11 required states); "
+                            + "without it the canonical palette is not checked against any pinned source");
+        }
         validateRequiredBlockStates(dir, states);
         validateItemIdMap(protocol, dir);
         validateManifest(dir);
@@ -141,21 +146,13 @@ class LegacyDataConverterValidationTest {
         for (NbtMap state : states) {
             actual.merge((String) state.get("name"), 1, Integer::sum);
         }
-        assertEquals(expected.size(), actual.size(),
-                "block name set differs from " + required.getFileName() + " in " + dir.getFileName());
-        for (Map.Entry<String, Integer> entry : expected.entrySet()) {
-            assertEquals(entry.getValue(), actual.getOrDefault(entry.getKey(), 0),
-                    "state count mismatch for " + entry.getKey() + " in " + dir.getFileName());
-        }
+        assertEquals(expected, actual,
+                () -> "canonical block-name multiset differs from " + required.getFileName() + " in "
+                        + dir.getFileName() + "; regenerate the legacy data with the converter");
     }
 
     static Map<String, Integer> parseRequiredCounts(Path required) throws IOException {
-        JsonObject root;
-        try {
-            root = JsonParser.parseString(Files.readString(required, StandardCharsets.UTF_8)).getAsJsonObject();
-        } catch (RuntimeException exception) {
-            throw new AssertionError("could not parse " + required + ": " + exception.getMessage(), exception);
-        }
+        JsonObject root = parseObject(required);
         Map<String, Integer> counts = new TreeMap<>();
         for (String namespace : root.keySet()) {
             JsonObject blocks = root.get(namespace).getAsJsonObject();
@@ -175,12 +172,7 @@ class LegacyDataConverterValidationTest {
                     "legacy protocol v" + protocol + " requires " + ITEM_ID_MAP_FILE + " in " + dir);
             return;
         }
-        JsonObject root;
-        try {
-            root = JsonParser.parseString(Files.readString(itemMap, StandardCharsets.UTF_8)).getAsJsonObject();
-        } catch (RuntimeException exception) {
-            throw new AssertionError("could not parse " + itemMap + ": " + exception.getMessage(), exception);
-        }
+        JsonObject root = parseObject(itemMap);
         assertFalse(root.isEmpty(), itemMap + " must not be empty");
         Set<Long> ids = new HashSet<>();
         for (String identifier : root.keySet()) {
@@ -190,6 +182,33 @@ class LegacyDataConverterValidationTest {
             long id = value.getAsLong();
             assertTrue(ids.add(id), "duplicate item id " + id + " for " + identifier + " in " + itemMap);
         }
+
+        if (LEGACY_PROTOCOLS.contains(protocol)) {
+            Path oracleFile = vanillaRoot().resolve("v361").resolve(ITEM_ID_MAP_FILE);
+            assertTrue(Files.exists(oracleFile), "missing v361 oracle " + oracleFile.toAbsolutePath());
+            Map<String, Long> oracle = readNumericMap(oracleFile);
+            Map<String, Long> actual = readNumericMap(itemMap);
+            assertEquals(oracle, actual,
+                    () -> ITEM_ID_MAP_FILE + " for protocol " + protocol
+                            + " must equal the v361 oracle per name; regenerate the legacy data with the converter");
+        }
+    }
+
+    static JsonObject parseObject(Path json) throws IOException {
+        try {
+            return JsonParser.parseString(Files.readString(json, StandardCharsets.UTF_8)).getAsJsonObject();
+        } catch (RuntimeException exception) {
+            throw new AssertionError("could not parse " + json + ": " + exception.getMessage(), exception);
+        }
+    }
+
+    static Map<String, Long> readNumericMap(Path json) throws IOException {
+        JsonObject root = parseObject(json);
+        Map<String, Long> map = new TreeMap<>();
+        for (String name : root.keySet()) {
+            map.put(name, root.get(name).getAsLong());
+        }
+        return map;
     }
 
     static void validateManifest(Path dir) throws IOException {

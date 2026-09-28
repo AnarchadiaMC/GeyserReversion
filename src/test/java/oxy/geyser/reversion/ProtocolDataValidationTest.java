@@ -189,16 +189,17 @@ class ProtocolDataValidationTest {
                 .collect(TreeSet::new, TreeSet::add, TreeSet::addAll);
 
         Path fixture = FIXTURE_DIR.resolve(FALLBACK_FIXTURE);
-        Set<Integer> documented;
-        if (Files.exists(fixture)) {
-            documented = parseProtocols(Files.readAllLines(fixture, StandardCharsets.UTF_8), fixture);
-        } else {
-            documented = absent;
+        if (Boolean.getBoolean(UPDATE_SNAPSHOTS_PROPERTY)) {
             writeLines(fixture, fallbackFixtureLines(absent));
-            LOGGER.warning("Generated missing fallback fixture " + fixture.toAbsolutePath()
-                    + " listing " + absent + "; commit it if the fallback gap is intended.");
+            LOGGER.warning("Rewrote fallback fixture " + fixture.toAbsolutePath() + " because -D"
+                    + UPDATE_SNAPSHOTS_PROPERTY + "=true; commit the updated fixture.");
+            return;
+        }
+        if (!Files.exists(fixture)) {
+            fail(missingFixtureMessage("fallback protocol", fixture));
         }
 
+        Set<Integer> documented = parseProtocols(Files.readAllLines(fixture, StandardCharsets.UTF_8), fixture);
         assertEquals(absent, documented,
                 () -> "fallback-protocols.txt is out of date. Exact mapping data directories are "
                         + (absent.isEmpty() ? "present for every registered protocol" : "absent for " + absent)
@@ -223,19 +224,15 @@ class ProtocolDataValidationTest {
     void dictionaryCountsMatchSnapshot() throws IOException {
         Map<String, String> current = currentDictionaryCounts();
         Path fixture = FIXTURE_DIR.resolve(COUNTS_FIXTURE);
-        boolean update = Boolean.getBoolean(UPDATE_SNAPSHOTS_PROPERTY);
 
-        if (!Files.exists(fixture)) {
+        if (Boolean.getBoolean(UPDATE_SNAPSHOTS_PROPERTY)) {
             writeDictionaryCounts(fixture, current);
-            LOGGER.warning("Generated missing dictionary snapshot " + fixture.toAbsolutePath() + " with "
-                    + current.size() + " entries; commit it to freeze the current counts.");
+            LOGGER.warning("Rewrote dictionary snapshot " + fixture.toAbsolutePath() + " with "
+                    + current.size() + " entries because -D" + UPDATE_SNAPSHOTS_PROPERTY + "=true; commit it.");
             return;
         }
-        if (update) {
-            writeDictionaryCounts(fixture, current);
-            LOGGER.warning("Rewrote dictionary snapshot " + fixture.toAbsolutePath() + " because -D"
-                    + UPDATE_SNAPSHOTS_PROPERTY + "=true.");
-            return;
+        if (!Files.exists(fixture)) {
+            fail(missingFixtureMessage("dictionary count", fixture));
         }
 
         Map<String, String> snapshot = readDictionaryCounts(fixture);
@@ -243,6 +240,13 @@ class ProtocolDataValidationTest {
                 () -> "Dictionary counts changed. If intended, re-run with -D" + UPDATE_SNAPSHOTS_PROPERTY
                         + "=true to rewrite " + fixture.toAbsolutePath() + ". Snapshot=" + snapshot
                         + ", current=" + current);
+    }
+
+    static String missingFixtureMessage(String what, Path fixture) {
+        return "Missing " + what + " fixture " + fixture.toAbsolutePath()
+                + ". Generate it by re-running the tests with -D" + UPDATE_SNAPSHOTS_PROPERTY + "=true "
+                + "(for Gradle: ./gradlew test -D" + UPDATE_SNAPSHOTS_PROPERTY + "=true, or set "
+                + "JAVA_TOOL_OPTIONS=-D" + UPDATE_SNAPSHOTS_PROPERTY + "=true) and commit the result.";
     }
 
     static Map<String, String> currentDictionaryCounts() {

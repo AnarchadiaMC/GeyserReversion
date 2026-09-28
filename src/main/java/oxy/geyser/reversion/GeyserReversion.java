@@ -124,35 +124,35 @@ public class GeyserReversion implements Extension {
             return;
         }
 
-        final Field bootstrapFuturesField;
-        final Field groupField;
-        final Field childGroupField;
-        final Field playerGroupField;
-        try {
-            bootstrapFuturesField = GeyserServer.class.getDeclaredField("bootstrapFutures");
-            bootstrapFuturesField.setAccessible(true);
-            groupField = GeyserServer.class.getDeclaredField("group");
-            groupField.setAccessible(true);
-            childGroupField = GeyserServer.class.getDeclaredField("childGroup");
-            childGroupField.setAccessible(true);
-            playerGroupField = GeyserServer.class.getDeclaredField("playerGroup");
-            playerGroupField.setAccessible(true);
-        } catch (ReflectiveOperationException e) {
-            LOGGER.severe("Cannot access Geyser server internals for this Geyser version; disabling GeyserReversion.", e);
-            event.extensionManager().disable(this);
-            return;
-        }
-
-        BRIDGE_GEYSER_CODEC = bridge.get();
-        LOGGER.info("Using Bedrock bridge codec " + BRIDGE_GEYSER_CODEC.getMinecraftVersion()
-                + " (" + BRIDGE_GEYSER_CODEC.getProtocolVersion() + ") for translated clients.");
-        // Restart Geyser's Bedrock listener so translated sessions use our packet handler.
-        geyser.getGeyserServer().shutdown();
-
         EventLoopGroup group = null;
         EventLoopGroup childGroup = null;
         TranslatorServerInitializer serverInitializer = null;
         try {
+            final Field bootstrapFuturesField;
+            final Field groupField;
+            final Field childGroupField;
+            final Field playerGroupField;
+            try {
+                bootstrapFuturesField = GeyserServer.class.getDeclaredField("bootstrapFutures");
+                bootstrapFuturesField.setAccessible(true);
+                groupField = GeyserServer.class.getDeclaredField("group");
+                groupField.setAccessible(true);
+                childGroupField = GeyserServer.class.getDeclaredField("childGroup");
+                childGroupField.setAccessible(true);
+                playerGroupField = GeyserServer.class.getDeclaredField("playerGroup");
+                playerGroupField.setAccessible(true);
+            } catch (ReflectiveOperationException e) {
+                LOGGER.severe("Cannot access Geyser server internals for this Geyser version; disabling GeyserReversion.", e);
+                event.extensionManager().disable(this);
+                return;
+            }
+
+            BRIDGE_GEYSER_CODEC = bridge.get();
+            LOGGER.info("Using Bedrock bridge codec " + BRIDGE_GEYSER_CODEC.getMinecraftVersion()
+                    + " (" + BRIDGE_GEYSER_CODEC.getProtocolVersion() + ") for translated clients.");
+            // Restart Geyser's Bedrock listener so translated sessions use our packet handler.
+            geyser.getGeyserServer().shutdown();
+
             Integer bedrockThreadCount = Integer.getInteger("Geyser.BedrockNetworkThreads");
             if (bedrockThreadCount == null) {
                 // Copy the code from Netty's default thread count fallback
