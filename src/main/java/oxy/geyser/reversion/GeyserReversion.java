@@ -88,7 +88,13 @@ public class GeyserReversion implements Extension {
     @SneakyThrows
     @Subscribe
     public void onGeyserPostInitializeEvent(GeyserPostInitializeEvent event) {
-        CONFIG = ConfigLoader.load(this, GeyserReversion.class, Config.class);
+        try {
+            CONFIG = ConfigLoader.load(this, GeyserReversion.class, Config.class);
+        } catch (RuntimeException | LinkageError e) {
+            LOGGER.severe("Failed to load config.yml; disabling GeyserReversion.", e);
+            event.extensionManager().disable(this);
+            return;
+        }
         if (CONFIG == null) {
             CONFIG = Config.DEFAULT;
             LOGGER.warning("Failed to load config.yml; using the built-in default configuration.");

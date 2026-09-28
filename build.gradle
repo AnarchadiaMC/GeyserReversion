@@ -39,11 +39,11 @@ dependencies {
     correspondingDependencySources 'org.allaymc.stateupdater:block-updater:1.21.110-R1:sources'
     correspondingDependencySources 'com.google.code.gson:gson:2.13.2:sources'
     correspondingDependencySources 'cn.hutool:hutool-core:5.8.40:sources'
-    correspondingDependencySources 'com.fasterxml.jackson.core:jackson-annotations:2.17.0:sources'
-    correspondingDependencySources 'com.fasterxml.jackson.core:jackson-core:2.17.0:sources'
-    correspondingDependencySources 'com.fasterxml.jackson.core:jackson-databind:2.17.0:sources'
-    correspondingDependencySources 'com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.17.0:sources'
-    correspondingDependencySources 'org.yaml:snakeyaml:2.2:sources'
+    correspondingDependencySources 'com.fasterxml.jackson.core:jackson-annotations:2.20:sources'
+    correspondingDependencySources 'com.fasterxml.jackson.core:jackson-core:2.20.0:sources'
+    correspondingDependencySources 'com.fasterxml.jackson.core:jackson-databind:2.20.0:sources'
+    correspondingDependencySources 'com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.20.0:sources'
+    correspondingDependencySources 'org.yaml:snakeyaml:2.4:sources'
     correspondingDependencySources 'net.lenni0451.classtransform:core:1.14.1:sources'
     correspondingDependencySources 'net.lenni0451:Reflect:1.5.0:sources'
     // Cloudburst fastutil publishes sources for all modules below.
@@ -84,10 +84,10 @@ dependencies {
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 
     // Bundled into the shadow jar.
-    implementation("com.fasterxml.jackson.core:jackson-annotations:2.17.0")
-    implementation("com.fasterxml.jackson.core:jackson-databind:2.17.0")
-    implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.17.0")
-    implementation("org.yaml:snakeyaml:2.2")
+    implementation("com.fasterxml.jackson.core:jackson-annotations:2.20")
+    implementation("com.fasterxml.jackson.core:jackson-databind:2.20.0")
+    implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.20.0")
+    implementation("org.yaml:snakeyaml:2.4")
     implementation("net.lenni0451.classtransform:core:1.14.1")
     implementation("net.lenni0451:Reflect:1.5.0")
     implementation("com.google.code.gson:gson:2.13.2")
@@ -108,11 +108,11 @@ dependencies {
 
 shadowJar {
     dependencies {
-        include(dependency("com.fasterxml.jackson.core:jackson-annotations:2.17.0"))
-        include(dependency("com.fasterxml.jackson.core:jackson-core:2.17.0"))
-        include(dependency("com.fasterxml.jackson.core:jackson-databind:2.17.0"))
-        include(dependency("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.17.0"))
-        include(dependency("org.yaml:snakeyaml:2.2"))
+        include(dependency("com.fasterxml.jackson.core:jackson-annotations:2.20"))
+        include(dependency("com.fasterxml.jackson.core:jackson-core:2.20.0"))
+        include(dependency("com.fasterxml.jackson.core:jackson-databind:2.20.0"))
+        include(dependency("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.20.0"))
+        include(dependency("org.yaml:snakeyaml:2.4"))
 
         include(dependency("net.lenni0451.classtransform:core:1.14.1"))
         include(dependency("net.lenni0451:Reflect:1.5.0"))
@@ -157,6 +157,43 @@ shadowJar {
     // namespace for the Cloudburst fastutil artifacts.
     relocate('org.cloudburstmc.fastutil', 'oxy.geyser.reversion.shaded.fastutil')
 }
+
+def shadowJarTask = tasks.named('shadowJar')
+
+tasks.register('verifyShadowJar') {
+    dependsOn shadowJarTask
+    doLast {
+        def jarFile = shadowJarTask.get().archiveFile.get().asFile
+        def requiredPrefixes = [
+                'oxy/geyser/reversion/shaded/jackson/core/',
+                'oxy/geyser/reversion/shaded/yaml/',
+                'oxy/geyser/reversion/shaded/gson/',
+                'oxy/geyser/reversion/shaded/fastutil/',
+                'oxy/geyser/reversion/shaded/hutool/',
+                'oxy/geyser/reversion/shaded/allaymc/',
+                'oxy/geyser/reversion/ouranos/ProtocolInfo.class',
+        ]
+        def forbiddenPrefixes = [
+                'com/fasterxml/',
+                'org/yaml/',
+                'org/cloudburstmc/protocol/',
+                'org/cloudburstmc/nbt/',
+        ]
+        def entries = []
+        new java.util.zip.ZipFile(jarFile).withCloseable { zip ->
+            zip.entries().each { entries << it.name }
+        }
+        def missing = requiredPrefixes.findAll { p -> !entries.any { it.startsWith(p) } }
+        def leaked = forbiddenPrefixes.findAll { p -> entries.any { it.startsWith(p) } }
+        if (!missing.isEmpty() || !leaked.isEmpty()) {
+            throw new GradleException("Shaded jar content verification failed. Missing: ${missing}. " +
+                    "Unexpectedly bundled (must stay provided by Geyser or relocated): ${leaked}. " +
+                    "Check dependency versions against the resolved runtimeClasspath.")
+        }
+    }
+}
+
+tasks.named('shadowJar') { finalizedBy tasks.named('verifyShadowJar') }
 
 modrinth {
     token = System.getenv("MODRINTH_TOKEN")
@@ -210,6 +247,7 @@ tasks.register('validateAll') {
     description = 'Aggregate verification task; currently the full test suite.'
     group = 'verification'
     dependsOn tasks.named('test')
+    dependsOn tasks.named('verifyShadowJar')
 }
 
 processResources {
