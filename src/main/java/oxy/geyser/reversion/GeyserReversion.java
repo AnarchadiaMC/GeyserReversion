@@ -112,9 +112,9 @@ public class GeyserReversion implements Extension {
 
             try {
                 int verifiedItems = BridgeMappingAudit.verifyItems(bridge.get().getProtocolVersion());
-                LOGGER.info("Verified " + verifiedItems + " vanilla bridge item runtime IDs against Geyser mappings.");
+                LOGGER.info("Verified " + verifiedItems + " bridge item definitions are present in Geyser's bridge registry.");
                 int verifiedBlocks = BridgeMappingAudit.verifyBlocks(bridge.get().getProtocolVersion());
-                LOGGER.info("Verified " + verifiedBlocks + " bridge block runtime states against Geyser mappings.");
+                LOGGER.info("Verified " + verifiedBlocks + " bridge block states are present in Geyser's bridge registry.");
             } catch (RuntimeException e) {
                 LOGGER.severe("Bridge mapping audit failed; disabling GeyserReversion instead of aliasing incompatible mappings.", e);
                 event.extensionManager().disable(this);

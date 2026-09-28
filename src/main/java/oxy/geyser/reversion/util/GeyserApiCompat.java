@@ -165,7 +165,7 @@ public final class GeyserApiCompat {
     }
 
     public static boolean setupBootstrap(AbstractBootstrap bootstrap, TransportHelper.TransportType type) {
-        Method method = findMethod(bootstrapsClass(), "setupBootstrap", AbstractBootstrap.class, TransportHelper.TransportType.class);
+        Method method = findMethod(bootstrapsClass(), "setupBootstrap", bootstrap, type);
         return (boolean) invoke("Bootstraps.setupBootstrap", method, null, bootstrap, type);
     }
 
@@ -335,11 +335,12 @@ public final class GeyserApiCompat {
     }
 
     /**
-     * Locates the single method named {@code name} whose parameters accept {@code expectedParams},
+     * Locates the single method named {@code name} whose parameters accept {@code expectedArgs},
      * searching declared methods (and their superclasses) rather than only the runtime class. An
-     * ambiguous overload is an error, mirroring {@link #newInstance}.
+     * ambiguous overload is an error, mirroring {@link #newInstance}. An argument may be a value or
+     * a {@code Class} literal; a class literal matches when the parameter accepts that class.
      */
-    private static Method findMethod(Class<?> type, String name, Class<?>... expectedParams) {
+    static Method findMethod(Class<?> type, String name, Object... expectedArgs) {
         Map<String, Method> matches = new LinkedHashMap<>();
         List<String> available = new ArrayList<>();
         for (Class<?> current = type; current != null; current = current.getSuperclass()) {
@@ -348,8 +349,8 @@ public final class GeyserApiCompat {
                     continue;
                 }
                 available.add(describeMethod(method));
-                if (method.getParameterCount() == expectedParams.length
-                        && parametersAccept(method.getParameterTypes(), expectedParams)) {
+                if (method.getParameterCount() == expectedArgs.length
+                        && parametersAccept(method.getParameterTypes(), expectedArgs)) {
                     // Bridge/synthetic methods share the erased signature of the method they delegate to.
                     matches.putIfAbsent(describeMethod(method), method);
                 }
@@ -357,20 +358,26 @@ public final class GeyserApiCompat {
         }
         if (matches.size() != 1) {
             throw new IllegalStateException("Cannot locate an unambiguous method " + type.getName() + "." + name
-                    + " accepting (" + describeParameters(expectedParams) + ") - found " + matches.size()
+                    + " accepting (" + describeArgs(expectedArgs) + ") - found " + matches.size()
                     + " matching method(s), need exactly 1. Overloads of " + name + ": "
                     + String.join("; ", available));
         }
         return matches.values().iterator().next();
     }
 
-    private static boolean parametersAccept(Class<?>[] parameters, Object[] args) {
+    static boolean parametersAccept(Class<?>[] parameters, Object[] args) {
         if (parameters.length != args.length) {
             return false;
         }
         for (int i = 0; i < args.length; i++) {
             if (args[i] == null) {
                 if (parameters[i].isPrimitive()) {
+                    return false;
+                }
+                continue;
+            }
+            if (args[i] instanceof Class<?> expectedClass) {
+                if (!wrap(parameters[i]).isAssignableFrom(expectedClass)) {
                     return false;
                 }
                 continue;

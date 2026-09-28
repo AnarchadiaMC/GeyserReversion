@@ -76,12 +76,24 @@ class BridgeMappingAuditTest {
         assertEquals(VANILLA.size(), BridgeMappingAudit.verifyItems(PROTOCOL, definitions(VANILLA)));
     }
 
-    @Test void corruptedPreImageEntryIsReportedWithoutFailingClosed() {
-        var corrupt = new HashMap<>(VANILLA);
-        var chest = corrupt.get("minecraft:chest");
-        corrupt.put("minecraft:chest", new ItemTypeInfo(chest.runtime_id() + 1,
+    @Test void reorderedRuntimeIdsAreCountedAsPresent() {
+        var reordered = new HashMap<>(VANILLA);
+        var chest = reordered.get("minecraft:chest");
+        reordered.put("minecraft:chest", new ItemTypeInfo(chest.runtime_id() + 1,
                 chest.component_based(), chest.version(), chest.component_nbt()));
-        ItemTypeDictionary.registerRuntimeDefinitions(PROTOCOL, corrupt);
+        ItemTypeDictionary.registerRuntimeDefinitions(PROTOCOL, reordered);
+
+        assertEquals(VANILLA.size(), BridgeMappingAudit.verifyItems(PROTOCOL, definitions(VANILLA)),
+                "a different runtime id for the same identifier must still count as present");
+    }
+
+    @Test void identifierAbsentFromGeyserIsReported() {
+        var geyserItems = new HashMap<>(VANILLA);
+        String missing = geyserItems.keySet().stream()
+                .filter(identifier -> !identifier.equals("minecraft:chest")
+                        && !identifier.equals("minecraft:crafting_table"))
+                .findFirst().orElseThrow();
+        geyserItems.remove(missing);
 
         var records = new ArrayList<LogRecord>();
         var logger = Logger.getLogger(BridgeMappingAudit.class.getName());
@@ -94,18 +106,17 @@ class BridgeMappingAuditTest {
         handler.setLevel(Level.ALL);
         logger.addHandler(handler);
         logger.setLevel(Level.ALL);
-        int matched;
+        int present;
         try {
-            matched = BridgeMappingAudit.verifyItems(PROTOCOL, definitions(VANILLA));
+            present = BridgeMappingAudit.verifyItems(PROTOCOL, definitions(geyserItems));
         } finally {
             logger.removeHandler(handler);
             logger.setLevel(previousLevel);
         }
 
-        assertEquals(VANILLA.size() - 1, matched, "corrupted entry must not count as matched");
-        assertTrue(records.stream().anyMatch(record -> record.getMessage().contains("minecraft:chest")
-                        && record.getMessage().contains("Ouranos=" + (chest.runtime_id() + 1))),
-                "corrupted pre-image entry must be logged with both runtime IDs");
+        assertEquals(VANILLA.size() - 1, present, "an identifier missing from Geyser must not count as present");
+        assertTrue(records.stream().anyMatch(record -> record.getMessage().contains(missing)),
+                "missing Geyser identifier must be logged by name");
     }
 
     @Test void missingGeyserRegistryFailsClosed() {

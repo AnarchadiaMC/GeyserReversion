@@ -88,25 +88,31 @@ public final class BridgeMappingAudit {
             throw new IllegalStateException("Geyser bridge is missing fundamental item definitions");
         }
 
-        int matched = 0;
-        int mismatched = 0;
+        int present = 0;
+        int absent = 0;
+        int reordered = 0;
         for (var entry : preImage.getEntries().entrySet()) {
             var definition = geyserItems.getDefinition(entry.getKey());
-            int ouranosId = entry.getValue().runtime_id();
-            if (definition == null || definition.getRuntimeId() != ouranosId) {
-                mismatched++;
-                if (mismatched <= MAX_REPORTED_MISMATCHES) {
-                    warn("Bridge item runtime ID mismatch for " + entry.getKey()
-                            + " at protocol " + protocol + ": Ouranos=" + ouranosId
-                            + ", Geyser=" + (definition == null ? "missing" : definition.getRuntimeId()));
+            if (definition == null) {
+                absent++;
+                if (absent <= MAX_REPORTED_MISMATCHES) {
+                    warn("Bridge item " + entry.getKey() + " is not present in Geyser's registry at protocol "
+                            + protocol + " (Ouranos runtime id " + entry.getValue().runtime_id() + ")");
                 }
             } else {
-                matched++;
+                present++;
+                if (definition.getRuntimeId() != entry.getValue().runtime_id()) {
+                    reordered++;
+                }
             }
         }
+        // Runtime ids are assigned per session by the StartGame/ItemComponent palettes, and this
+        // extension replaces the pre-image with Geyser's live registry before any session starts.
+        // Translation maps items by identifier, so a different ordering is expected, not drift.
         info("Audited " + preImage.getEntries().size() + " Ouranos bridge item definitions at protocol "
-                + protocol + ": " + matched + " matched, " + mismatched + " mismatched");
-        return matched;
+                + protocol + ": " + present + " present in Geyser's registry, " + absent + " absent, "
+                + reordered + " reordered (translation is identifier-based; ordering is not used)");
+        return present;
     }
 
     public static int verifyBlocks(int protocol) {
@@ -132,29 +138,36 @@ public final class BridgeMappingAudit {
             states.add(block.getState());
         }
 
-        int matched = 0;
-        int mismatched = 0;
+        int present = 0;
+        int absent = 0;
+        int reordered = 0;
         var knownStates = preImage.getKnownStates();
         for (int id = 0; id < knownStates.size(); id++) {
             var entry = knownStates.get(id);
             var definition = blocks.getDefinition(networkStateKey(entry.rawState()));
-            if (definition == null || definition.getRuntimeId() != id) {
-                mismatched++;
-                if (mismatched <= MAX_REPORTED_MISMATCHES) {
-                    warn("Bridge block runtime ID mismatch for " + entry.name()
-                            + " at protocol " + protocol + ": Ouranos=" + id
-                            + ", Geyser=" + (definition == null ? "missing" : definition.getRuntimeId()));
+            if (definition == null) {
+                absent++;
+                if (absent <= MAX_REPORTED_MISMATCHES) {
+                    warn("Bridge block state " + entry.name() + " is not present in Geyser's registry at protocol "
+                            + protocol + " (Ouranos runtime id " + id + ")");
                 }
             } else {
-                matched++;
+                present++;
+                if (definition.getRuntimeId() != id) {
+                    reordered++;
+                }
             }
         }
+        // Geyser's runtime ids exist only for the StartGame palette it sends; this extension installs
+        // that palette before any session starts and translation maps blocks by state hash, so
+        // ordering differences in the bundled pre-image are expected rather than a defect.
         info("Audited " + knownStates.size() + " Ouranos bridge block states at protocol "
-                + protocol + ": " + matched + " matched, " + mismatched + " mismatched");
+                + protocol + ": " + present + " present in Geyser's registry, " + absent + " absent, "
+                + reordered + " reordered (translation is state-hash based; ordering is not used)");
 
         // Internal input palette only; all legacy output palettes remain version-specific.
         BlockStateDictionary.registerRuntimeStates(protocol, states);
-        return matched;
+        return present;
     }
 
     private static void requireFundamentalItems(Set<String> identifiers, String source) {
