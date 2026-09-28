@@ -1,7 +1,6 @@
 # GeyserReversion
 
-Backward Bedrock protocol translation for Geyser, maintained as a public fork
-by **siberanka**. September 2026 compatibility update: **1.1.0 (experimental)**.
+Backward Bedrock protocol translation for Geyser. September 2026 compatibility update: **1.1.0 (experimental)**.
 
 [GitLab releases](https://gitlab.com/siberanka/GeyserReversion-AIRemake/-/releases) ·
 [GitHub releases](https://github.com/siberanka/GeyserReversion-AIRemake/releases) ·
