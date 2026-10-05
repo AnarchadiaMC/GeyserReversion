@@ -11,7 +11,11 @@ public class Protocol818to800 extends ProtocolToProtocol {
     protected void registerProtocol() {
         this.registerClientbound(StartGamePacket.class, wrapped -> {
             final StartGamePacket packet = (StartGamePacket) wrapped.getPacket();
-            packet.setAuthoritativeMovementMode(AuthoritativeMovementMode.SERVER_WITH_REWIND);
+            // Geyser itself sent SERVER (client-predicted, server-validated movement) to every client
+            // whose StartGame still serializes the mode (protocol < 818); the SERVER_WITH_REWIND value
+            // tells the client the server drives movement with rewind-based corrections, which Geyser
+            // does not send, leaving translated legacy clients frozen at their spawn position.
+            packet.setAuthoritativeMovementMode(AuthoritativeMovementMode.SERVER);
 
             packet.getExperiments().add(new ExperimentData("experimental_graphics", true));
             packet.getExperiments().add(new ExperimentData("y_2025_drop_2", true));

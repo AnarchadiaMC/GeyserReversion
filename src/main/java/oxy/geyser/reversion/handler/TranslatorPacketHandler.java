@@ -196,6 +196,8 @@ public final class TranslatorPacketHandler extends UpstreamPacketHandler {
 
     @Override
     public PacketSignal handle(SetLocalPlayerAsInitializedPacket packet) {
+        debugPacket(packet, "initialized-marker runtimeEntityId=" + packet.getRuntimeEntityId()
+                + " expected=" + session.getPlayerEntity().geyserId());
         return super.handle(packet);
     }
 
@@ -219,10 +221,12 @@ public final class TranslatorPacketHandler extends UpstreamPacketHandler {
             final int oldId = this.user.getCloudburstClientCodec().getPacketDefinition(packet.getClass()).getId();
             final Integer newId = this.user.translateServerbound(input, output, oldId);
             if (newId == null) {
+                debugPacket(packet, "dropped (no bridge mapping)");
                 return PacketSignal.HANDLED;
             }
 
             super.handlePacket(this.user.decodeServer(output, newId));
+            debugPacket(packet, "dispatched");
         } catch (Exception exception) {
             failures.report(session, packet, "serverbound", exception);
         } finally {
@@ -230,6 +234,23 @@ public final class TranslatorPacketHandler extends UpstreamPacketHandler {
             output.release();
         }
         return PacketSignal.HANDLED;
+    }
+
+    private void debugPacket(BedrockPacket packet, String outcome) {
+        if (!GeyserReversion.config().debugMode() || GeyserReversion.LOGGER == null) {
+            return;
+        }
+        String type;
+        try {
+            type = packet.getPacketType().getName();
+        } catch (RuntimeException ignored) {
+            type = packet.getClass().getSimpleName();
+        }
+        GeyserReversion.LOGGER.info("[serverbound] " + type + " " + outcome
+                + " (protocol " + this.clientProtocol
+                + ", spawned=" + session.isSpawned()
+                + ", loggedIn=" + session.isLoggedIn()
+                + ", upstreamInitialized=" + session.getUpstream().isInitialized() + ")");
     }
 
     private boolean bridgeUnavailable(int protocolVersion) {
