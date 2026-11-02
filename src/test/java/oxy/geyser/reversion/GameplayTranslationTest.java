@@ -23,7 +23,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class GameplayTranslationTest {
     /**
      * The bridge the runtime actually selects: the newest Bedrock protocol the pinned Geyser and
-     * the checked-in Ouranos mapping data share (1001 on both Geyser 2.11.2 and 2.11.3). Derived
+     * the checked-in Ouranos mapping data share (2168 for Bedrock 1.26.40-1.26.44). Derived
      * from both sides' own data rather than from {@link BridgeCodecSelector#select}. Every
      * gameplay, recipe and inventory case below therefore runs against the production target
      * version instead of a hardcoded protocol.
@@ -118,19 +118,28 @@ class GameplayTranslationTest {
             var uuid = new UUID(0, 42);
             var ingredients = List.of(ItemDescriptorWithCount.fromItem(item(BRIDGE_PROTOCOL, "minecraft:chest", 1)));
             var results = List.of(item(BRIDGE_PROTOCOL, "minecraft:crafting_table", 1));
-            packet.getCraftingData().add(ShapedRecipeData.of(CraftingDataType.SHAPED, "test:shaped", 1, 1,
-                    ingredients, results, uuid, "crafting_table", 0, 123));
-            packet.getCraftingData().add(ShapelessRecipeData.of(CraftingDataType.SHAPELESS, "test:shapeless",
-                    ingredients, results, uuid, "crafting_table", 0, 124));
+            var shaped = ShapedRecipeData.of(CraftingDataType.SHAPED, "test:shaped", 1, 1,
+                    ingredients, results, uuid, "crafting_table", 0, 123);
+            var shapeless = ShapelessRecipeData.of(CraftingDataType.SHAPELESS, "test:shapeless",
+                    ingredients, results, uuid, "crafting_table", 0, 124);
+            // Geyser on 1.26.40+ populates only the typed lists; legacy client codecs read the
+            // aggregate list, so RecipeTranslator must fold them back before conversion.
+            packet.getShapedData().add(shaped);
+            packet.getShapelessData().add(shapeless);
             var decoded = (CraftingDataPacket) clientbound(session, packet);
-            assertEquals(2, decoded.getCraftingData().size(), "Never clear all ordinary recipes");
-            var shaped = (ShapedRecipeData) decoded.getCraftingData().getFirst();
-            assertEquals(uuid, shaped.getUuid());
+            int recipeCount = protocol >= 2168
+                    ? decoded.getShapedData().size() + decoded.getShapelessData().size()
+                    : decoded.getCraftingData().size();
+            assertEquals(2, recipeCount, "Never clear all ordinary recipes");
+            var decodedShaped = protocol >= 2168
+                    ? decoded.getShapedData().getFirst()
+                    : (ShapedRecipeData) decoded.getCraftingData().getFirst();
+            assertEquals(uuid, decodedShaped.getUuid());
             assertEquals(ItemTypeDictionary.getInstance(protocol).fromStringId("minecraft:crafting_table").intValue(),
-                    shaped.getResults().getFirst().getDefinition().getRuntimeId());
+                    decodedShaped.getResults().getFirst().getDefinition().getRuntimeId());
             assertEquals(ItemTypeDictionary.getInstance(protocol).fromStringId("minecraft:chest").intValue(),
-                    ((DefaultDescriptor) shaped.getIngredients().getFirst().getDescriptor()).getItemId().getRuntimeId());
-            if (protocol >= 407) { assertEquals(123, shaped.getNetId()); }
+                    ((DefaultDescriptor) decodedShaped.getIngredients().getFirst().getDescriptor()).getItemId().getRuntimeId());
+            if (protocol >= 407) { assertEquals(123, decodedShaped.getNetId()); }
         }));
     }
 
@@ -205,5 +214,51 @@ class GameplayTranslationTest {
             assertEquals(ItemTypeDictionary.getInstance(BRIDGE_PROTOCOL).fromStringId("minecraft:chest").intValue(),
                     translated.getItemUseTransaction().getItemInHand().getDefinition().getRuntimeId());
         }));
+    }
+
+    @Test
+    void aggregateAndTypedRecipeListsAreNotMergedTwice() {
+        // A pre-2168 client (419) reads only the aggregate list. When Geyser already populated both
+        // lists, folding the typed lists in as well would duplicate every recipe in the book.
+        var session = initialized(419);
+        var packet = new CraftingDataPacket();
+        packet.setCleanRecipes(true);
+        var uuid = new UUID(0, 44);
+        var ingredients = List.of(ItemDescriptorWithCount.fromItem(item(BRIDGE_PROTOCOL, "minecraft:chest", 1)));
+        var results = List.of(item(BRIDGE_PROTOCOL, "minecraft:crafting_table", 1));
+        var shaped = ShapedRecipeData.of(CraftingDataType.SHAPED, "test:shaped", 1, 1,
+                ingredients, results, uuid, "crafting_table", 0, 127);
+        packet.getCraftingData().add(shaped);
+        packet.getShapedData().add(shaped);
+
+        var decoded = (CraftingDataPacket) clientbound(session, packet);
+        assertEquals(1, decoded.getCraftingData().size(),
+                "a populated aggregate list must not be merged with the typed lists");
+        assertEquals(uuid, ((ShapedRecipeData) decoded.getCraftingData().getFirst()).getUuid());
+    }
+
+    @Test
+    void typedRecipeListsSurviveForPre2168Clients() {
+        // Geyser on 1.26.40+ populates only the typed lists; a pre-2168 client reads none of them, so
+        // the whole recipe book would arrive empty without the fold-back.
+        var session = initialized(419);
+        var packet = new CraftingDataPacket();
+        packet.setCleanRecipes(true);
+        var shapedUuid = new UUID(0, 45);
+        var shapelessUuid = new UUID(0, 46);
+        var ingredients = List.of(ItemDescriptorWithCount.fromItem(item(BRIDGE_PROTOCOL, "minecraft:chest", 1)));
+        var results = List.of(item(BRIDGE_PROTOCOL, "minecraft:crafting_table", 1));
+        packet.getShapedData().add(ShapedRecipeData.of(CraftingDataType.SHAPED, "test:shaped", 1, 1,
+                ingredients, results, shapedUuid, "crafting_table", 0, 128));
+        packet.getShapelessData().add(ShapelessRecipeData.of(CraftingDataType.SHAPELESS, "test:shapeless",
+                ingredients, results, shapelessUuid, "crafting_table", 0, 129));
+
+        var decoded = (CraftingDataPacket) clientbound(session, packet);
+        assertEquals(2, decoded.getCraftingData().size(),
+                "typed recipes must be folded into the aggregate list for a pre-2168 client");
+        assertEquals(shapedUuid, ((ShapedRecipeData) decoded.getCraftingData().get(0)).getUuid(),
+                "the shaped recipe must survive in the aggregate list");
+        assertEquals(shapelessUuid, ((ShapelessRecipeData) decoded.getCraftingData().get(1)).getUuid(),
+                "the shapeless recipe must survive in the aggregate list");
     }
 }

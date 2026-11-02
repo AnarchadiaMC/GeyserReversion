@@ -31,6 +31,16 @@ public class OtherItemTypeDictionaryRegistry implements DefinitionRegistry<ItemD
                         itemInfo.component_based(), itemInfo.getComponentNbt());
     }
 
+    // v2168 recipe descriptors carry the item identifier instead of a runtime id; the interface
+    // default for this overload throws, so delegate through the versioned dictionary first.
+    public ItemDefinition getDefinition(String identifier) {
+        ItemTypeInfo itemInfo = ItemTypeDictionary.getInstance(this.protocol).getEntries().get(identifier);
+        return itemInfo == null ? this.registry.getDefinition(identifier) :
+                new SimpleItemDefinition(identifier, itemInfo.runtime_id(),
+                        itemInfo.getVersion() == null ? ItemVersion.NONE : ItemVersion.from(itemInfo.getVersion().ordinal()),
+                        itemInfo.component_based(), itemInfo.getComponentNbt());
+    }
+
     public boolean isRegistered(ItemDefinition definition) {
         return this.registry.isRegistered(definition) || ItemTypeDictionary.getInstance(this.protocol).fromStringId(definition.getIdentifier()) != null;
     }

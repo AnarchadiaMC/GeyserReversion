@@ -9,6 +9,7 @@ import org.cloudburstmc.protocol.bedrock.codec.BedrockPacketDefinition;
 import org.cloudburstmc.protocol.bedrock.data.CommandBlockMode;
 import org.cloudburstmc.protocol.bedrock.data.LevelEvent;
 import org.cloudburstmc.protocol.bedrock.data.PacketRecipient;
+import org.cloudburstmc.protocol.bedrock.data.ParticleType;
 import org.cloudburstmc.protocol.bedrock.packet.BedrockPacket;
 import org.cloudburstmc.protocol.bedrock.packet.ClientCacheBlobStatusPacket;
 import org.cloudburstmc.protocol.bedrock.packet.ClientCacheMissResponsePacket;
@@ -17,6 +18,7 @@ import org.cloudburstmc.protocol.bedrock.packet.CommandBlockUpdatePacket;
 import org.cloudburstmc.protocol.bedrock.packet.LecternUpdatePacket;
 import org.cloudburstmc.protocol.bedrock.packet.LevelChunkPacket;
 import org.cloudburstmc.protocol.bedrock.packet.LevelEventGenericPacket;
+import org.cloudburstmc.protocol.bedrock.packet.LevelEventPacket;
 import org.cloudburstmc.protocol.bedrock.packet.MapCreateLockedCopyPacket;
 import org.cloudburstmc.protocol.bedrock.packet.OnScreenTextureAnimationPacket;
 import org.cloudburstmc.protocol.bedrock.packet.StructureTemplateDataRequestPacket;
@@ -33,6 +35,7 @@ import oxy.geyser.reversion.ouranos.session.OuranosSession;
 import oxy.geyser.reversion.ouranos.session.SpecialOuranosSession;
 import oxy.geyser.reversion.ouranos.converter.ItemTypeDictionary;
 import oxy.geyser.reversion.ouranos.translators.new_to_old.v1001to944.Protocol1001to944;
+import oxy.geyser.reversion.ouranos.translators.new_to_old.v2168to1001.Protocol2168to1001;
 import oxy.geyser.reversion.ouranos.translators.new_to_old.v340to332.Protocol340to332;
 import oxy.geyser.reversion.ouranos.translators.new_to_old.v354to340.Protocol354to340;
 import oxy.geyser.reversion.ouranos.translators.new_to_old.v361to354.Protocol361to354;
@@ -43,7 +46,10 @@ import org.cloudburstmc.protocol.bedrock.data.SoundEvent;
 import org.cloudburstmc.protocol.bedrock.data.attributelayer.AttributeLayerSettings;
 import org.cloudburstmc.protocol.bedrock.data.attributelayer.UpdateAttributeLayerSettingsData;
 import org.cloudburstmc.protocol.bedrock.data.definitions.DimensionDefinition;
+import org.cloudburstmc.protocol.bedrock.data.entity.EntityDataMap;
+import org.cloudburstmc.protocol.bedrock.data.entity.EntityDataTypes;
 import org.cloudburstmc.protocol.bedrock.data.entity.EntityEventType;
+import org.cloudburstmc.protocol.bedrock.data.entity.EntityFlag;
 import org.cloudburstmc.protocol.bedrock.data.inventory.ContainerSlotType;
 import org.cloudburstmc.protocol.bedrock.data.inventory.EnchantData;
 import org.cloudburstmc.protocol.bedrock.data.inventory.EnchantOptionData;
@@ -71,6 +77,7 @@ import org.cloudburstmc.protocol.bedrock.packet.SendPartyDestinationCookiePacket
 import org.cloudburstmc.protocol.bedrock.packet.ServerPresenceInfoPacket;
 import org.cloudburstmc.protocol.bedrock.packet.ServerStoreInfoPacket;
 import org.cloudburstmc.protocol.bedrock.packet.ServerboundDiagnosticsPacket;
+import org.cloudburstmc.protocol.bedrock.packet.SetEntityDataPacket;
 import org.cloudburstmc.protocol.bedrock.packet.StartGamePacket;
 import org.cloudburstmc.protocol.bedrock.packet.SubChunkRequestPacket;
 import org.cloudburstmc.protocol.bedrock.packet.UpdateClientOptionsPacket;
@@ -1059,5 +1066,179 @@ class LegacyTranslatorTest {
         assertEquals(Protocol340to332.class, chain.getLast().getClass());
         assertTrue(chain.stream().anyMatch(translator -> translator instanceof Protocol354to340));
         assertTrue(chain.stream().anyMatch(translator -> translator instanceof Protocol361to354));
+    }
+
+    // ============================================================================================
+    // 1.26.40-1.26.44 (2168) -> 1.26.30 (1001) downgrade.
+    //
+    // The session is (protocolId = 1001 legacy client, targetVersion = 2168 bridge), so clientbound
+    // wire tests encode with the 2168 server codec and decode with the 1001 client codec.
+    // ============================================================================================
+
+    private static final StubSession SESSION_1001 = new StubSession(1001, 2168);
+
+    private static Protocol2168to1001 newV2168to1001() {
+        return new Protocol2168to1001();
+    }
+
+    private static WrappedBedrockPacket wrapClientbound2168(BedrockPacket packet) {
+        return new WrappedBedrockPacket(SESSION_1001, 2168, 1001, packet, false);
+    }
+
+    @Test
+    void v2168TranslatorIsRegisteredForThe1001And575Downgrades() {
+        assertEquals(List.of(Protocol2168to1001.class), classes(ProtocolInfo.getTranslators(2168, 1001)),
+                "a 1001 client is reached by the bridge step alone");
+
+        final List<Class<?>> chain575 = classes(ProtocolInfo.getTranslators(2168, 575));
+        assertEquals(Protocol2168to1001.class, chain575.getFirst(),
+                "the chain for a 1.19.80 client must start at the bridge step");
+        assertEquals(Protocol1001to944.class, chain575.get(1),
+                "the 1001 -> 944 step must follow the bridge step");
+        assertTrue(chain575.size() > 2, "a 575 client crosses every registered step down to 575");
+    }
+
+    @Test
+    void v2168OnlySoundsAreCancelledOnTheDowngrade() {
+        for (final SoundEvent sound : List.of(SoundEvent.MOUNT, SoundEvent.DISMOUNT,
+                SoundEvent.STRAW_BED_BREAK_LEAVE)) {
+            final LevelSoundEventPacket packet = new LevelSoundEventPacket();
+            packet.setSound(sound);
+            packet.setPosition(Vector3f.ZERO);
+            final WrappedBedrockPacket wrapped = wrapClientbound2168(packet);
+            newV2168to1001().passthroughClientbound(wrapped);
+            assertTrue(wrapped.isCancelled(), sound + " has no numeric SOUND_EVENTS id below v975 and must be dropped");
+        }
+    }
+
+    @Test
+    void soundsSharedWith1001StillPassTheDowngrade() {
+        final LevelSoundEventPacket packet = new LevelSoundEventPacket();
+        packet.setSound(SoundEvent.HIT);
+        packet.setPosition(Vector3f.ZERO);
+        final WrappedBedrockPacket wrapped = wrapClientbound2168(packet);
+        newV2168to1001().passthroughClientbound(wrapped);
+        assertFalse(wrapped.isCancelled());
+    }
+
+    @Test
+    void v2168OnlyParticlesAreCancelledOnLevelEvents() {
+        for (final ParticleType particle : List.of(ParticleType.ORANGE_POPLAR_LEAVES,
+                ParticleType.RED_POPLAR_LEAVES, ParticleType.YELLOW_POPLAR_LEAVES)) {
+            final LevelEventPacket levelEvent = new LevelEventPacket();
+            levelEvent.setType(particle);
+            levelEvent.setPosition(Vector3f.ZERO);
+            final WrappedBedrockPacket wrappedEvent = wrapClientbound2168(levelEvent);
+            newV2168to1001().passthroughClientbound(wrappedEvent);
+            assertTrue(wrappedEvent.isCancelled(), particle + " has no 1001 LEVEL_EVENTS id");
+
+            final LevelEventGenericPacket generic = new LevelEventGenericPacket();
+            generic.setType(particle);
+            final WrappedBedrockPacket wrappedGeneric = wrapClientbound2168(generic);
+            newV2168to1001().passthroughClientbound(wrappedGeneric);
+            assertTrue(wrappedGeneric.isCancelled(), particle + " has no 1001 LEVEL_EVENTS id");
+        }
+
+        final LevelEventPacket shared = new LevelEventPacket();
+        shared.setType(LevelEvent.PARTICLE_DESTROY_BLOCK);
+        shared.setPosition(Vector3f.ZERO);
+        final WrappedBedrockPacket wrappedShared = wrapClientbound2168(shared);
+        newV2168to1001().passthroughClientbound(wrappedShared);
+        assertFalse(wrappedShared.isCancelled());
+    }
+
+    @Test
+    void setEntityDataDropsOnlyTheV2168OnlyEntries() {
+        final SetEntityDataPacket packet = new SetEntityDataPacket();
+        packet.setRuntimeEntityId(5L);
+        packet.setMetadata(new EntityDataMap());
+        final EntityDataMap metadata = packet.getMetadata();
+        metadata.setFlag(EntityFlag.NOT_PICKABLE_FROM_INSIDE, true);
+        metadata.putType(EntityDataTypes.UNKNOWN_HORSE_INT_25, 9);
+        metadata.putType(EntityDataTypes.AREA_EFFECT_CLOUD_PARTICLE, ParticleType.ORANGE_POPLAR_LEAVES);
+        metadata.putType(EntityDataTypes.HORSE_FLAGS, 3);
+
+        final WrappedBedrockPacket wrapped = wrapClientbound2168(packet);
+        newV2168to1001().passthroughClientbound(wrapped);
+
+        assertFalse(wrapped.isCancelled(), "stateful metadata must be stripped, not dropped");
+        assertFalse(metadata.getFlag(EntityFlag.NOT_PICKABLE_FROM_INSIDE),
+                "entity flag 130 is not in the 1001 ENTITY_FLAGS map");
+        assertFalse(metadata.containsKey(EntityDataTypes.UNKNOWN_HORSE_INT_25),
+                "entity data id 25 is new at 2168");
+        assertFalse(metadata.containsKey(EntityDataTypes.AREA_EFFECT_CLOUD_PARTICLE),
+                "the 1001 PARTICLE_TYPES map has no poplar leaves");
+        assertEquals(3, (int) metadata.get(EntityDataTypes.HORSE_FLAGS),
+                "shared metadata must survive");
+    }
+
+    @Test
+    void v2168OnlyParticlesAreDroppedOnThe1001Wire() {
+        // The 1001 codec resolves LevelEvent/LevelEventGeneric types through its LEVEL_EVENTS table,
+        // which ends at 16485; without the bridge step the client encode throws on 16486-16488.
+        final WireSession session = new WireSession(1001, 2168);
+        for (final ParticleType particle : List.of(ParticleType.ORANGE_POPLAR_LEAVES,
+                ParticleType.RED_POPLAR_LEAVES, ParticleType.YELLOW_POPLAR_LEAVES)) {
+            final LevelEventPacket levelEvent = new LevelEventPacket();
+            levelEvent.setType(particle);
+            levelEvent.setPosition(Vector3f.ZERO);
+            final LevelEventGenericPacket generic = new LevelEventGenericPacket();
+            generic.setType(particle);
+            generic.setTag(NbtMap.EMPTY);
+            for (final BedrockPacket packet : List.of(levelEvent, generic)) {
+                final ByteBuf input = Unpooled.buffer();
+                final ByteBuf output = Unpooled.buffer();
+                try {
+                    session.encodeServer(packet, input);
+                    final int id = session.getServerCodec().getPacketDefinition(packet.getClass()).getId();
+                    assertNull(session.translateClientbound(input, output, id), particle + " " + packet.getClass().getSimpleName());
+                    assertEquals(0, output.readableBytes());
+                } finally {
+                    input.release();
+                    output.release();
+                }
+            }
+        }
+    }
+
+    @Test
+    void setEntityDataDropsV2168OnlyEntriesOnThe1001Wire() {
+        final WireSession session = new WireSession(1001, 2168);
+        final SetEntityDataPacket packet = new SetEntityDataPacket();
+        packet.setRuntimeEntityId(5L);
+        packet.setMetadata(new EntityDataMap());
+        packet.getMetadata().setFlag(EntityFlag.NOT_PICKABLE_FROM_INSIDE, true);
+        packet.getMetadata().putType(EntityDataTypes.UNKNOWN_HORSE_INT_25, 9);
+        packet.getMetadata().putType(EntityDataTypes.AREA_EFFECT_CLOUD_PARTICLE, ParticleType.YELLOW_POPLAR_LEAVES);
+        packet.getMetadata().putType(EntityDataTypes.HORSE_FLAGS, 3);
+
+        final SetEntityDataPacket decoded = clientboundWire1001(session, packet);
+        assertEquals(5L, decoded.getRuntimeEntityId());
+        assertFalse(decoded.getMetadata().getFlag(EntityFlag.NOT_PICKABLE_FROM_INSIDE));
+        assertFalse(decoded.getMetadata().containsKey(EntityDataTypes.UNKNOWN_HORSE_INT_25));
+        assertFalse(decoded.getMetadata().containsKey(EntityDataTypes.AREA_EFFECT_CLOUD_PARTICLE));
+        assertEquals(3, (int) decoded.getMetadata().get(EntityDataTypes.HORSE_FLAGS));
+    }
+
+    @Test
+    void v2168OnlySoundIsDroppedOnThe575Wire() {
+        // 575 still encodes the numeric SOUND_EVENTS id, so without the bridge step the 575 client
+        // codec throws on MOUNT; the step must drop the packet before the client encode.
+        final WireSession session = new WireSession(575, 2168);
+        final LevelSoundEventPacket packet = new LevelSoundEventPacket();
+        packet.setSound(SoundEvent.MOUNT);
+        packet.setPosition(Vector3f.ZERO);
+        packet.setIdentifier("");
+        final ByteBuf input = Unpooled.buffer();
+        final ByteBuf output = Unpooled.buffer();
+        try {
+            session.encodeServer(packet, input);
+            final int id = session.getServerCodec().getPacketDefinition(packet.getClass()).getId();
+            assertNull(session.translateClientbound(input, output, id));
+            assertEquals(0, output.readableBytes());
+        } finally {
+            input.release();
+            output.release();
+        }
     }
 }

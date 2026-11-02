@@ -90,6 +90,7 @@ dependencies {
     correspondingDependencySources "org.cloudburstmc.protocol:bedrock-connection:${cloudburstProtocolPin}:sources"
 
     // Offline generator for the legacy per-protocol data directories; never bundled into the JAR.
+    // The protocol 2168 bridge generator (tools/bridge-data-converter) reuses this configuration.
     legacyDataTools("org.cloudburstmc:nbt:3.0.5.Final")
     legacyDataTools("com.google.code.gson:gson:2.13.2")
 
@@ -314,6 +315,27 @@ tasks.register('generateLegacyData', JavaExec) {
     if (project.hasProperty('legacyDataModes')) {
         args '--modes', project.property('legacyDataModes')
     }
+}
+
+// Regenerates src/main/resources/vanilla/v2168 from the pinned Geyser 26.40 resources checked in
+// under tools/bridge-data-converter/data. Provenance and checksums: docs/LEGACY-DATA.md.
+tasks.register('compileBridgeDataConverter', JavaCompile) {
+    description = 'Compiles the offline protocol 2168 bridge data converter under tools/bridge-data-converter.'
+    source = fileTree('tools/bridge-data-converter/src/main/java') { include '**/*.java' }
+    classpath = configurations.legacyDataTools
+    destinationDirectory = layout.buildDirectory.dir('bridge-data-converter/classes')
+    options.encoding = 'UTF-8'
+}
+
+tasks.register('generateBridgeData', JavaExec) {
+    description = 'Regenerates the vanilla v2168 bridge mapping data from the checked-in Geyser 26.40 inputs.'
+    group = 'verification'
+    dependsOn 'compileBridgeDataConverter'
+    classpath = files(tasks.named('compileBridgeDataConverter', JavaCompile).flatMap { it.destinationDirectory },
+            configurations.legacyDataTools)
+    mainClass = 'oxy.geyser.reversion.tools.BridgeDataConverter'
+    args '--source', file('tools/bridge-data-converter/data/Geyser').absolutePath,
+            '--output', file('src/main/resources/vanilla/v2168').absolutePath
 }
 
 tasks.register('validateAll') {

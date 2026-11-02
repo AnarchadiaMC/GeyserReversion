@@ -9,6 +9,7 @@ import oxy.geyser.reversion.ouranos.translators.new_to_old.v776to766.Protocol776
 import oxy.geyser.reversion.ouranos.translators.new_to_old.v818to800.Protocol818to800;
 import oxy.geyser.reversion.ouranos.translators.new_to_old.v844to827.Protocol844to827;
 import oxy.geyser.reversion.ouranos.translators.new_to_old.v1001to944.Protocol1001to944;
+import oxy.geyser.reversion.ouranos.translators.new_to_old.v2168to1001.Protocol2168to1001;
 import oxy.geyser.reversion.ouranos.translators.old_to_new.v582to589.Protocol582to589;
 import oxy.geyser.reversion.ouranos.translators.old_to_new.v671to685.Protocol671to685;
 import oxy.geyser.reversion.ouranos.translators.old_to_new.v712to729.Protocol712to729;
@@ -25,12 +26,15 @@ class ProtocolTranslatorBoundaryTest {
     /**
      * Protocol the descending chain starts at: the bridge the runtime actually selects, i.e. the
      * newest Bedrock protocol the pinned Geyser and the checked-in Ouranos mapping data share
-     * (1001 on both Geyser 2.11.2 and 2.11.3). Derived from both sides' own data rather than from
+     * (2168 for Bedrock 1.26.40-1.26.44). Derived from both sides' own data rather than from
      * {@link BridgeCodecSelector#select}.
      */
     static final int BRIDGE = derivedBridgeProtocol();
 
-    /** First registered protocol below the bridge; a client here needs only the bridge step. */
+    /**
+     * First registered protocol below the bridge; a client here is translated down by the bridge's
+     * own downgrade step plus every step between that protocol and the client.
+     */
     static final int NEXT_BELOW_BRIDGE = nextBelowBridge();
 
     private static int derivedBridgeProtocol() {
@@ -63,25 +67,28 @@ class ProtocolTranslatorBoundaryTest {
     @Test void clientAtTranslatorBoundaryIsNotTranslatedDown() {
         // 844 is the key of Protocol844to827, so a client that already speaks 844 must not be
         // downgraded by the translator registered at 844. Reaching it from the bridge still costs
-        // the single bridge step (1001 -> 944), which is what the runtime runs.
+        // the bridge's own 2168 -> 1001 step and the 1001 -> 944 step, which is what the runtime runs.
         var chain = classes(ProtocolInfo.getTranslators(BRIDGE, 844));
         assertFalse(chain.contains(Protocol844to827.class),
                 "the translator keyed at the client protocol must never run for a client on that protocol");
-        assertEquals(List.of(Protocol1001to944.class), chain,
-                "only the bridge step may run between the bridge and a client that already speaks 844");
+        assertEquals(List.of(Protocol2168to1001.class, Protocol1001to944.class), chain,
+                "only the bridge steps may run between the bridge and a client that already speaks 844");
     }
 
     @Test void clientBelowTranslatorBoundaryGetsExactlyThatTranslator() {
-        // Top of the chain is the bridge, so the 1001 -> 944 step precedes the boundary step.
-        assertEquals(List.of(Protocol1001to944.class, Protocol844to827.class),
+        // Top of the chain is the bridge, so the 2168 -> 1001 and 1001 -> 944 steps precede the boundary step.
+        assertEquals(List.of(Protocol2168to1001.class, Protocol1001to944.class, Protocol844to827.class),
                 classes(ProtocolInfo.getTranslators(BRIDGE, 827)),
-                "the chain must run the bridge step first and then exactly the translator the client sits below");
+                "the chain must run the bridge steps first and then exactly the translator the client sits below");
     }
 
-    @Test void clientAtTheFirstProtocolBelowTheBridgeOnlyNeedsTheBridgeStep() {
-        assertEquals(List.of(Protocol1001to944.class),
+    @Test void clientAtTheFirstProtocolBelowTheBridgeGetsTheBridgeStep() {
+        // 1001 (Bedrock 1.26.30) is the first protocol below the 2168 bridge, so it is translated by
+        // the bridge step Protocol2168to1001. 1001 is also the key of Protocol1001to944, and that
+        // translator must not run for a client that already speaks 1001.
+        assertEquals(List.of(Protocol2168to1001.class),
                 classes(ProtocolInfo.getTranslators(BRIDGE, NEXT_BELOW_BRIDGE)),
-                "the first protocol below the bridge is a passthrough codec, so only the bridge step may run");
+                "the first protocol below the bridge is downgraded by the bridge step alone");
     }
 
     @Test void descendingChainKeepsOrderAndExcludesClientKeyedTranslator() {
@@ -91,7 +98,7 @@ class ProtocolTranslatorBoundaryTest {
 
     @Test void bridgeIsTheTopStepOfTheFullDescendingChain() {
         var chain = classes(ProtocolInfo.getTranslators(BRIDGE, 332));
-        assertEquals(Protocol1001to944.class, chain.getFirst(),
+        assertEquals(Protocol2168to1001.class, chain.getFirst(),
                 "the derived bridge must be the newest protocol the descending chain starts from");
         assertEquals(Protocol340to332.class, chain.getLast(),
                 "the descending chain must end at the oldest registered translator step");

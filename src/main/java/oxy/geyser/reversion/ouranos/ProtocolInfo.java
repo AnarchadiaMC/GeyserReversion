@@ -2,6 +2,7 @@ package oxy.geyser.reversion.ouranos;
 
 import oxy.geyser.reversion.ouranos.base.ProtocolToProtocol;
 import oxy.geyser.reversion.ouranos.data.bedrock.GlobalItemDataHandlers;
+import oxy.geyser.reversion.ouranos.translators.new_to_old.v2168to1001.Protocol2168to1001;
 import oxy.geyser.reversion.ouranos.translators.new_to_old.v340to332.Protocol340to332;
 import oxy.geyser.reversion.ouranos.translators.new_to_old.v354to340.Protocol354to340;
 import oxy.geyser.reversion.ouranos.translators.new_to_old.v361to354.Protocol361to354;
@@ -93,6 +94,7 @@ import org.cloudburstmc.protocol.bedrock.codec.v898.Bedrock_v898;
 import org.cloudburstmc.protocol.bedrock.codec.v924.Bedrock_v924;
 import org.cloudburstmc.protocol.bedrock.codec.v944.Bedrock_v944;
 import org.cloudburstmc.protocol.bedrock.codec.v1001.Bedrock_v1001;
+import org.cloudburstmc.protocol.bedrock.codec.v2168.Bedrock_v2168_hotfix4;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -106,7 +108,13 @@ public final class ProtocolInfo {
     }
 
     static {
-        // 1.26.30 (26.30) - top bridge for Geyser 2.11.3+
+        // 1.26.40-1.26.44 (26.40-26.44) - top bridge for Geyser 2.12.x, which registers this
+        // codec for those client versions. Schema 271 (1.26.20 -> 1.26.40) is the newest vendored
+        // schema 1.26.44 has completed; 0281+ is not vendored at this protocol. The downgrade step
+        // covers the values 2168 added that 1001's tables cannot encode.
+        addPacketCodec(Bedrock_v2168_hotfix4.CODEC, 271, new Protocol2168to1001(), null);
+
+        // 1.26.30 (26.30) - bridge for Geyser 2.11.3+
         addPacketCodec(Bedrock_v1001.CODEC, 271, new oxy.geyser.reversion.ouranos.translators.new_to_old.v1001to944.Protocol1001to944(), null);
 
         // 1.26.x

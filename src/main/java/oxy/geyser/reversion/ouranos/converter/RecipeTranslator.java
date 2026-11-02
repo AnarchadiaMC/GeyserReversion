@@ -6,6 +6,7 @@
 package oxy.geyser.reversion.ouranos.converter;
 
 import oxy.geyser.reversion.ouranos.session.OuranosSession;
+import org.cloudburstmc.protocol.bedrock.codec.v2168.Bedrock_v2168_hotfix4;
 import org.cloudburstmc.protocol.bedrock.data.inventory.ItemData;
 import org.cloudburstmc.protocol.bedrock.data.inventory.crafting.*;
 import org.cloudburstmc.protocol.bedrock.data.inventory.crafting.recipe.*;
@@ -15,9 +16,19 @@ import java.util.List;
 
 /** Preserve recipe identities while converting every concrete ingredient/result ID. */
 public final class RecipeTranslator {
+    /**
+     * Protocol that replaced CraftingDataPacket's single aggregate recipe list with typed
+     * per-recipe lists. Legacy client codecs still serialise the aggregate list.
+     */
+    private static final int TYPED_RECIPE_LISTS_PROTOCOL = Bedrock_v2168_hotfix4.CODEC.getProtocolVersion();
+
     private RecipeTranslator() { }
 
     public static void translate(OuranosSession session, CraftingDataPacket packet) {
+        if (session.getProtocolId() < TYPED_RECIPE_LISTS_PROTOCOL) {
+            mergeTypedRecipeLists(packet);
+        }
+
         var translated = new java.util.ArrayList<RecipeData>(packet.getCraftingData().size());
         for (var recipe : packet.getCraftingData()) {
             // An unrepresentable modern recipe must not make the entire legacy recipe book unusable.
@@ -40,6 +51,25 @@ public final class RecipeTranslator {
         // Education-only material reducers need a separate legacy chemistry implementation.
         // Do not advertise them with mismatched IDs; ordinary crafting/brewing stays intact.
         packet.getMaterialReducers().clear();
+    }
+
+    /**
+     * Modern Geyser populates only the typed recipe lists, which a legacy client codec never reads,
+     * silently dropping the whole recipe book. Copy them into the aggregate list before conversion.
+     * A packet that already carries aggregate recipes is left alone so nothing is duplicated.
+     */
+    private static void mergeTypedRecipeLists(CraftingDataPacket packet) {
+        if (!packet.getCraftingData().isEmpty()) {
+            return;
+        }
+        packet.getCraftingData().addAll(packet.getShapedData());
+        packet.getCraftingData().addAll(packet.getShapelessData());
+        packet.getCraftingData().addAll(packet.getMultiData());
+        packet.getCraftingData().addAll(packet.getShapelessUserData());
+        packet.getCraftingData().addAll(packet.getShapelessChemistryData());
+        packet.getCraftingData().addAll(packet.getShapedChemistryData());
+        packet.getCraftingData().addAll(packet.getSmithingTransformData());
+        packet.getCraftingData().addAll(packet.getSmithingTrimData());
     }
 
     private static int[] id(OuranosSession s, int id, int meta) {

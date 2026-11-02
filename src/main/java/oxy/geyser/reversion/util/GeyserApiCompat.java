@@ -18,6 +18,7 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -226,8 +227,21 @@ public final class GeyserApiCompat {
         return (String) readStaticField("RakPingHandler.NAME", "NAME", rakPingHandlerClass());
     }
 
+    /**
+     * Geyser 2.11.x constructs {@code InvalidPacketHandler} with the session; 2.12.1 replaced that
+     * constructor with a no-arg one plus {@code setSession(GeyserSession)}. Prefer the session
+     * constructor so a build that grows both keeps the shape it already validated.
+     */
     public static ChannelHandler createInvalidPacketHandler(GeyserSession session) {
-        return (ChannelHandler) newInstance(invalidPacketHandlerClass(), session);
+        Class<?> invalidPacketHandler = invalidPacketHandlerClass();
+        if (hasConstructor(invalidPacketHandler, session)) {
+            return (ChannelHandler) newInstance(invalidPacketHandler, session);
+        }
+        Object handler = newInstance(invalidPacketHandler);
+        Method setSession = declaredMethod("InvalidPacketHandler.setSession", invalidPacketHandler,
+                "setSession", GeyserSession.class);
+        invoke("InvalidPacketHandler.setSession", setSession, handler, session);
+        return (ChannelHandler) handler;
     }
 
     public static String invalidPacketHandlerName() {
@@ -244,15 +258,82 @@ public final class GeyserApiCompat {
      * accessible before it can be invoked across the package boundary.
      */
     public static int bedrockPort(GeyserConfig config) {
-        Method bedrockAccessor = declaredMethod("GeyserConfig.bedrock", GeyserConfig.class, "bedrock");
-        Object bedrockConfig = invoke("GeyserConfig.bedrock", bedrockAccessor, config);
-        if (bedrockConfig == null) {
-            throw new IllegalStateException("GeyserConfig.bedrock() returned null; cannot resolve the Bedrock port");
-        }
+        Object bedrockConfig = bedrockConfig(config);
         Method portAccessor = findBedrockPortAccessor(bedrockConfig.getClass());
         int port = (int) invoke(portAccessor.getDeclaringClass().getName() + "#" + portAccessor.getName(), portAccessor, bedrockConfig);
         logBedrockPortOnce(portAccessor, port);
         return port;
+    }
+
+    /**
+     * Reads whether the RakNet listener should negotiate PROXY protocol. Geyser 2.11.x exposes the
+     * {@code useHaproxyProtocol()} boolean; 2.12.1 removed it and its {@code RaknetServer} now enables
+     * proxying when {@code haproxyProtocolWhitelistedIps()} contains a non-blank entry. The boolean
+     * wins when the build still has it, so an operator's {@code use-haproxy-protocol: false} keeps
+     * applying.
+     */
+    public static boolean useHaproxyProtocol(GeyserConfig config) {
+        Method advancedAccessor = declaredMethod("GeyserConfig.advanced", GeyserConfig.class, "advanced");
+        Object advancedConfig = invoke("GeyserConfig.advanced", advancedAccessor, config);
+        if (advancedConfig == null) {
+            throw new IllegalStateException("GeyserConfig.advanced() returned null; cannot resolve the PROXY protocol switch");
+        }
+        Object bedrockConfig = publicAccessor(advancedConfig, "bedrock", "GeyserConfig$AdvancedConfig");
+        Method legacy = findOptionalAccessor(bedrockConfig.getClass(), "useHaproxyProtocol");
+        if (legacy != null) {
+            return (boolean) invoke(legacy.getDeclaringClass().getName() + "#useHaproxyProtocol", legacy, bedrockConfig);
+        }
+        Method whitelist = findOptionalAccessor(bedrockConfig.getClass(), "haproxyProtocolWhitelistedIps");
+        if (whitelist != null) {
+            Object value = invoke(whitelist.getDeclaringClass().getName() + "#haproxyProtocolWhitelistedIps",
+                    whitelist, bedrockConfig);
+            if (value instanceof Collection<?> whitelisted) {
+                for (Object entry : whitelisted) {
+                    if (entry instanceof String address && !address.isBlank()) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+        throw new IllegalStateException("Cannot resolve the PROXY protocol switch on "
+                + bedrockConfig.getClass().getName()
+                + ": neither useHaproxyProtocol() nor haproxyProtocolWhitelistedIps() exists");
+    }
+
+    /**
+     * Invokes a public no-arg accessor on a package-private config record through its public
+     * interface, which is why the lookup is {@code getMethod} and not a declared-method search.
+     */
+    private static Object publicAccessor(Object target, String name, String description) {
+        Method accessor;
+        try {
+            accessor = target.getClass().getMethod(name);
+        } catch (NoSuchMethodException e) {
+            throw new IllegalStateException("Cannot locate " + description + "." + name + "() on "
+                    + target.getClass().getName(), e);
+        }
+        return invoke(description + "." + name, accessor, target);
+    }
+
+    private static Object bedrockConfig(GeyserConfig config) {
+        Method bedrockAccessor = declaredMethod("GeyserConfig.bedrock", GeyserConfig.class, "bedrock");
+        Object bedrockConfig = invoke("GeyserConfig.bedrock", bedrockAccessor, config);
+        if (bedrockConfig == null) {
+            throw new IllegalStateException("GeyserConfig.bedrock() returned null; cannot resolve the Bedrock settings");
+        }
+        return bedrockConfig;
+    }
+
+    /** Resolves a public accessor that a Geyser build is allowed to have dropped. */
+    private static Method findOptionalAccessor(Class<?> type, String name) {
+        try {
+            Method accessor = type.getMethod(name);
+            accessor.setAccessible(true);
+            return accessor;
+        } catch (NoSuchMethodException e) {
+            return null;
+        }
     }
 
     private static void logBedrockPortOnce(Method portAccessor, int port) {
@@ -303,6 +384,16 @@ public final class GeyserApiCompat {
         } catch (ReflectiveOperationException | RuntimeException e) {
             throw new IllegalStateException("Failed to read " + owner.getName() + "." + name, e);
         }
+    }
+
+    /** Whether any declared constructor accepts {@code args}; mirrors {@link #newInstance}'s match. */
+    private static boolean hasConstructor(Class<?> type, Object... args) {
+        for (Constructor<?> constructor : type.getDeclaredConstructors()) {
+            if (parametersAccept(constructor.getParameterTypes(), args)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

@@ -174,7 +174,7 @@ public class GeyserReversion implements Extension {
                     .option(RakChannelOption.RAK_SERVER_COOKIE_MODE,
                             rakSendCookie ? RakServerCookieMode.ACTIVE : RakServerCookieMode.INVALID)
                     .option(RakChannelOption.RAK_PROXY_PROTOCOL,
-                            geyser.config().advanced().bedrock().useHaproxyProtocol())
+                            GeyserApiCompat.useHaproxyProtocol(geyser.config()))
                     .option(RakChannelOption.RAK_THROTTLE,
                             rakRateLimitingDisabled ? null : new DefaultRakServerThrottle(maxConnectionsPerAddress, 4_000, 3))
                     .childHandler(serverInitializer);

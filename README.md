@@ -8,12 +8,13 @@ Backward Bedrock protocol translation for Geyser. September 2026 compatibility u
 [Local validation report](docs/VALIDATION-2026-09.md)
 
 Native Bedrock is handled by the installed Geyser build, so the native range
-depends on that build: Geyser 2.11.3 speaks Bedrock 1.26.30–1.26.50 (protocols
-1001 / 2168 / 2169 / 2193) natively. Legacy codec coverage runs from Bedrock
-1.9.0 (protocol 332) up to 1.26.30, but legacy gameplay is experimental, not
-guaranteed flawless. Bedrock 1.8.0 and 1.7.0 are **not** supported: no public
-block palette exists for them. See the support matrix before deploying on a
-production server.
+depends on that build: Geyser 2.12.1 speaks Bedrock 1.26.40–1.26.60 (protocols
+2168 / 2169 / 2193 / 2225) natively, and the pinned Geyser 2.11.3 adds 1.26.30
+(protocol 1001) below it. Legacy codec coverage runs from Bedrock 1.9.0
+(protocol 332) up to 1.26.44 (protocol 2168), but legacy gameplay is
+experimental, not guaranteed flawless. Bedrock 1.8.0 and 1.7.0 are **not**
+supported: no public block palette exists for them. See the support matrix
+before deploying on a production server.
 
 ## Installation
 
@@ -21,15 +22,17 @@ Use Java 21+, Geyser **2.11.2 or newer**, and (for Floodgate authentication)
 Floodgate **2.2.5 build 140**. The build and its test suite are validated
 against Geyser **2.11.3 build 1247** and Cloudburst Protocol
 **3.0.0.Beta13**, both pinned to exact immutable builds in `build.gradle`; the
-same extension also loads on 2.11.2. Place only the `-all.jar` in Geyser's
-`extensions/` directory and restart. Configure authentication in
-Geyser/Floodgate, not with a separate Microsoft-login setting in this
-extension. The extension selects the highest protocol that both the installed
-Geyser and its own mapping data support, which is **1001 / 26.30** on 2.11.2 and
-on 2.11.3. Geyser 2.11.3 moved and renamed several internals the extension
-reaches for, so those lookups are resolved reflectively at runtime; if a Geyser
-build leaves no usable shared bridge, the extension logs the reason and
-disables itself rather than crashing Geyser.
+same extension also loads on 2.11.2 and on Geyser 2.12.x, whose moved internals
+and 2.12.1 shapes were re-verified against the 2.12.1 runtime JAR. Place only
+the `-all.jar` in Geyser's `extensions/` directory and restart. Configure
+authentication in Geyser/Floodgate, not with a separate Microsoft-login setting
+in this extension. The extension selects the highest protocol that both the
+installed Geyser and its own mapping data support, which is **2168 /
+1.26.40-1.26.44** on the pinned 2.11.3 and on 2.12.x. Geyser 2.11.3 and 2.12.1
+moved and renamed several internals the extension reaches for, so those lookups
+are resolved reflectively at runtime; if a Geyser build leaves no usable shared
+bridge, the extension logs the reason and disables itself rather than crashing
+Geyser.
 
 Back up inventories/worlds and certify legacy clients on staging first.
 Modern mechanics, custom content and anti-cheat behavior need server-specific
@@ -67,6 +70,8 @@ source JARs. Unlike platform-generated source ZIPs, it can build without a
   tables and upgrade schemas).
 - `tools/legacy-data-converter/` — offline generator for the generated
   `vanilla/v332`, `v340` and `v354` directories; never bundled into the JAR.
+- `tools/bridge-data-converter/` — offline generator for the generated
+  `vanilla/v2168` bridge directory; never bundled into the JAR.
 - `docs/` — compatibility matrix, vendored-data provenance and the local
   validation report.
 

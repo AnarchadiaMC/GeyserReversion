@@ -33,7 +33,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class BridgeMappingAuditTest {
     /**
      * The bridge the runtime actually selects: the newest Bedrock protocol the pinned Geyser and
-     * the checked-in Ouranos mapping data share (1001 on both Geyser 2.11.2 and 2.11.3). Derived
+     * the checked-in Ouranos mapping data share (2168 for Bedrock 1.26.40-1.26.44). Derived
      * from both sides' own data rather than from {@link BridgeCodecSelector#select}, so the audit
      * expectations are not simply the selector's answer.
      */

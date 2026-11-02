@@ -10,6 +10,7 @@ import org.cloudburstmc.nbt.NbtMap;
 import org.cloudburstmc.nbt.NbtType;
 import org.cloudburstmc.protocol.bedrock.codec.BedrockCodec;
 import org.cloudburstmc.protocol.bedrock.codec.BedrockCodecHelper;
+import org.cloudburstmc.protocol.bedrock.codec.v2168.Bedrock_v2168_hotfix4;
 import org.cloudburstmc.protocol.bedrock.data.AuthoritativeMovementMode;
 import org.cloudburstmc.protocol.bedrock.data.BlockPropertyData;
 import org.cloudburstmc.protocol.bedrock.data.ChatRestrictionLevel;
@@ -90,8 +91,8 @@ class CodecWireCompatibilityTest {
      * The bridge the runtime actually selects: the newest Bedrock protocol the pinned Geyser and
      * the checked-in Ouranos mapping data share. Derived from both sides' own data instead of
      * {@link BridgeCodecSelector#select}, so the wire expectations below cannot agree with the
-     * selector by construction. It moves with the Geyser pin and the vanilla data (1001 on both
-     * Geyser 2.11.2 and 2.11.3, which register exact vanilla/v1001 mapping data).
+     * selector by construction. It moves with the Geyser pin and the vanilla data (2168 for Bedrock
+     * 1.26.40-1.26.44, which ships exact vanilla/v2168 mapping data).
      */
     static final int BRIDGE_PROTOCOL = derivedBridgeProtocol();
 
@@ -270,6 +271,11 @@ class CodecWireCompatibilityTest {
                 .definition(itemDefinition("minecraft:crafting_table", 2)).count(1).build());
         packet.getCraftingData().add(ShapedRecipeData.of(CraftingDataType.SHAPED, "test:shaped", 1, 1,
                 ingredients, results, RECIPE_UUID, "crafting_table", 0, 123));
+        // v2168 (Bedrock 1.26.40) replaced the single aggregate list with typed per-recipe lists;
+        // older codecs still serialise the deprecated aggregate list. Populate both so the same
+        // fixture crosses either side of that boundary.
+        packet.getShapedData().add(ShapedRecipeData.of(CraftingDataType.SHAPED, "test:shaped", 1, 1,
+                ingredients, results, RECIPE_UUID, "crafting_table", 0, 123));
         return packet;
     }
 
@@ -390,9 +396,16 @@ class CodecWireCompatibilityTest {
     }
 
     static void assertCraftingData(int protocol, CraftingDataPacket decoded) {
-        assertEquals(1, decoded.getCraftingData().size());
-        assertInstanceOf(ShapedRecipeData.class, decoded.getCraftingData().getFirst());
-        ShapedRecipeData recipe = (ShapedRecipeData) decoded.getCraftingData().getFirst();
+        // v2168 split CraftingDataPacket into typed lists; older codecs read the aggregate list.
+        final int typedRecipeListsProtocol = Bedrock_v2168_hotfix4.CODEC.getProtocolVersion();
+        Object first = protocol >= typedRecipeListsProtocol
+                ? decoded.getShapedData().getFirst()
+                : decoded.getCraftingData().getFirst();
+        assertEquals(1, protocol >= typedRecipeListsProtocol
+                ? decoded.getShapedData().size()
+                : decoded.getCraftingData().size());
+        assertInstanceOf(ShapedRecipeData.class, first);
+        ShapedRecipeData recipe = (ShapedRecipeData) first;
         assertEquals(protocol >= 361 ? "test:shaped" : "", recipe.getId(),
                 "the CraftingData recipe string id only exists on the wire from protocol 361");
         assertEquals(RECIPE_UUID, recipe.getUuid());

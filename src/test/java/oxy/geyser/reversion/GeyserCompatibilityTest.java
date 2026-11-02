@@ -91,11 +91,12 @@ class GeyserCompatibilityTest {
 
     @Test
     void bridgeProtocolStillSupported() {
-        // Nothing in this test may assert which protocols the pinned Geyser happens to list: that set moves
-        // with every upstream build, and the assertions used to encode it only broke on a version bump.
-        // What must hold at every pin is:
+        // Nothing in this test may derive expectations from which protocols the pinned Geyser happens
+        // to list: that set moves with every upstream build, and the assertions used to encode it only
+        // broke on a version bump. What must hold at every pin is:
         //   1. the bridge is the highest protocol that is both Geyser-supported and registered in
-        //      ProtocolInfo with exact mapping data, and
+        //      ProtocolInfo with exact mapping data; the closed-set check below then pins the exact
+        //      value so it fails when the runtime set or the mapping data moves, and
         //   2. Ouranos registers no protocol above that bridge, so the bridge is a hard ceiling and every
         //      client Geyser can reach is either the bridge itself or a downgrade target below it.
         assertTrue(ProtocolInfo.getTranslators(1001, 944).stream()
@@ -125,9 +126,19 @@ class GeyserCompatibilityTest {
                 "the selected bridge protocol must be one the pinned Geyser supports natively");
         assertTrue(BridgeCodecSelector.hasMappingData(selected),
                 "the selected bridge protocol must ship Ouranos mapping data");
-        assertTrue(selected <= runtimeSupportedProtocols().get(0),
-                "the bridge must be the newest protocol both sides share, so the pinned Geyser's lowest supported "
-                        + "protocol (" + runtimeSupportedProtocols().get(0) + ") must be covered by Ouranos");
+        // Falsifiable restatement of "the bridge covers the runtime set": the snapshot above pins the
+        // runtime to 1001/2168/2169/2193, so the highest protocol that also has Ouranos mapping data
+        // is exactly 2168, and Geyser's lowest supported protocol stays reachable from it.
+        assertEquals(2168, selected,
+                "the pinned Geyser runtime supports 1001/2168/2169/2193, so the bridge must be exactly 2168 "
+                        + "unless the pin, the mapping data or the selector changed");
+        int lowestSupported = runtimeSupportedProtocols().get(0);
+        if (selected > lowestSupported) {
+            assertTrue(BridgeCodecSelector.hasMappingData(lowestSupported),
+                    "clients on the pinned Geyser's lowest supported protocol " + lowestSupported
+                            + " are translated down from the bridge " + selected
+                            + ", so that protocol needs exact mapping data");
+        }
 
         // Invariant 2.
         List<Integer> registeredAboveBridge = ProtocolInfo.getPacketCodecs().stream()

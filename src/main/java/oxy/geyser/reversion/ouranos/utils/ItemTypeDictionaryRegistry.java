@@ -27,6 +27,19 @@ public class ItemTypeDictionaryRegistry implements DefinitionRegistry<ItemDefini
         return new SimpleVersionedItemDefinition(itemId, itemInfo.runtime_id(), itemInfo.getVersion(), itemInfo.component_based(), itemInfo.getComponentNbt());
     }
 
+    /**
+     * v2168 recipe descriptors carry the item identifier instead of a runtime id, so decoding them
+     * requires the by-name lookup that {@link DefinitionRegistry}'s default method rejects.
+     */
+    @Override
+    public ItemDefinition getDefinition(String identifier) {
+        final ItemTypeInfo itemInfo = ItemTypeDictionary.getInstance(this.protocol).getEntries().get(identifier);
+        if (itemInfo == null) {
+            return this.registry.getDefinition(identifier);
+        }
+        return new SimpleVersionedItemDefinition(identifier, itemInfo.runtime_id(), itemInfo.getVersion(), itemInfo.component_based(), itemInfo.getComponentNbt());
+    }
+
     @Override
     public boolean isRegistered(ItemDefinition definition) {
         return this.registry.isRegistered(definition) || ItemTypeDictionary.getInstance(this.protocol).fromStringId(definition.getIdentifier()) != null;
