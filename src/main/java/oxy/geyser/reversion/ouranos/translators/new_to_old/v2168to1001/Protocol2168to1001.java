@@ -7,6 +7,9 @@ import org.cloudburstmc.protocol.bedrock.data.entity.EntityDataMap;
 import org.cloudburstmc.protocol.bedrock.data.entity.EntityDataType;
 import org.cloudburstmc.protocol.bedrock.data.entity.EntityDataTypes;
 import org.cloudburstmc.protocol.bedrock.data.entity.EntityFlag;
+import org.cloudburstmc.protocol.bedrock.packet.AddEntityPacket;
+import org.cloudburstmc.protocol.bedrock.packet.AddItemEntityPacket;
+import org.cloudburstmc.protocol.bedrock.packet.AddPlayerPacket;
 import org.cloudburstmc.protocol.bedrock.packet.LevelEventGenericPacket;
 import org.cloudburstmc.protocol.bedrock.packet.LevelEventPacket;
 import org.cloudburstmc.protocol.bedrock.packet.LevelSoundEventPacket;
@@ -79,32 +82,46 @@ public class Protocol2168to1001 extends ProtocolToProtocol {
         // SetEntityData is stateful, so unrepresentable entries are stripped instead of dropping the
         // whole packet: an entity that keeps its position/health metadata visibly beats one that
         // freezes because one 2168-only entry could not be encoded.
-        this.registerClientbound(SetEntityDataPacket.class, wrapped -> {
-            final EntityDataMap metadata = ((SetEntityDataPacket) wrapped.getPacket()).getMetadata();
+        this.registerClientbound(SetEntityDataPacket.class, wrapped ->
+                stripUnrepresentableMetadata(((SetEntityDataPacket) wrapped.getPacket()).getMetadata()));
 
-            // Entity flag 130 NOT_PICKABLE_FROM_INSIDE is new at 2168. The 1001 ENTITY_FLAGS map ends
-            // at 129, and FlagTransformer.serialize calls TypeMap.getId for every present flag before
-            // it decides which 64-bit chunk the flag belongs to, so encoding it throws. The flag has
-            // no 64-bit chunk on either protocol (the chunks cover ids 0-127), so nothing is lost.
-            removeNewFlag(metadata, EntityDataTypes.FLAGS);
-            removeNewFlag(metadata, EntityDataTypes.FLAGS_2);
+        // Spawn packets embed the same metadata table, and these values throw at encode time
+        // wherever they appear, not only on SetEntityDataPacket.
+        this.registerClientbound(AddPlayerPacket.class, wrapped ->
+                stripUnrepresentableMetadata(((AddPlayerPacket) wrapped.getPacket()).getMetadata()));
+        this.registerClientbound(AddEntityPacket.class, wrapped ->
+                stripUnrepresentableMetadata(((AddEntityPacket) wrapped.getPacket()).getMetadata()));
+        this.registerClientbound(AddItemEntityPacket.class, wrapped ->
+                stripUnrepresentableMetadata(((AddItemEntityPacket) wrapped.getPacket()).getMetadata()));
+    }
 
-            // 2168 rebuilt entity data id 16 (DISPLAY_BLOCK_STATE/DISPLAY_FIREWORK/HORSE_FLAGS/
-            // WITHER_SKULL_DANGEROUS) but kept every shared type at the same id, so only the formats
-            // differ and each codec writes its own; that rebuild needs no translation.
-            //
-            // Id 25 UNKNOWN_HORSE_INT_25 is the one genuinely new EntityDataType at 2168. The 1001
-            // EntityDataTypeMap has no definition for it, and BedrockCodecHelper.writeEntityData
-            // dereferences the null returned by EntityDataTypeMap.fromType.
-            metadata.remove(EntityDataTypes.UNKNOWN_HORSE_INT_25);
+    private static void stripUnrepresentableMetadata(final EntityDataMap metadata) {
+        if (metadata == null) {
+            return;
+        }
 
-            // AREA_EFFECT_CLOUD_PARTICLE keeps its key at 1001, but its transformer resolves the
-            // value through the codec's own PARTICLE_TYPES map, which lacks the particles above.
-            final ParticleType particle = metadata.get(EntityDataTypes.AREA_EFFECT_CLOUD_PARTICLE);
-            if (isNewParticle(particle)) {
-                metadata.remove(EntityDataTypes.AREA_EFFECT_CLOUD_PARTICLE);
-            }
-        });
+        // Entity flag 130 NOT_PICKABLE_FROM_INSIDE is new at 2168. The 1001 ENTITY_FLAGS map ends
+        // at 129, and FlagTransformer.serialize calls TypeMap.getId for every present flag before
+        // it decides which 64-bit chunk the flag belongs to, so encoding it throws. The flag has
+        // no 64-bit chunk on either protocol (the chunks cover ids 0-127), so nothing is lost.
+        removeNewFlag(metadata, EntityDataTypes.FLAGS);
+        removeNewFlag(metadata, EntityDataTypes.FLAGS_2);
+
+        // 2168 rebuilt entity data id 16 (DISPLAY_BLOCK_STATE/DISPLAY_FIREWORK/HORSE_FLAGS/
+        // WITHER_SKULL_DANGEROUS) but kept every shared type at the same id, so only the formats
+        // differ and each codec writes its own; that rebuild needs no translation.
+        //
+        // Id 25 UNKNOWN_HORSE_INT_25 is the one genuinely new EntityDataType at 2168. The 1001
+        // EntityDataTypeMap has no definition for it, and BedrockCodecHelper.writeEntityData
+        // dereferences the null returned by EntityDataTypeMap.fromType.
+        metadata.remove(EntityDataTypes.UNKNOWN_HORSE_INT_25);
+
+        // AREA_EFFECT_CLOUD_PARTICLE keeps its key at 1001, but its transformer resolves the
+        // value through the codec's own PARTICLE_TYPES map, which lacks the particles above.
+        final ParticleType particle = metadata.get(EntityDataTypes.AREA_EFFECT_CLOUD_PARTICLE);
+        if (isNewParticle(particle)) {
+            metadata.remove(EntityDataTypes.AREA_EFFECT_CLOUD_PARTICLE);
+        }
     }
 
     private static boolean isNewParticle(LevelEventType type) {

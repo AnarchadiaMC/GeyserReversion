@@ -73,7 +73,16 @@ Geyser's own listener in place.
 - `Protocol2168to1001` drops the level sounds (`MOUNT`, `DISMOUNT`,
   `STRAW_BED_BREAK_LEAVE`), the poplar-leaves particles and the entity
   flag/metadata entries that 1.26.40 introduced, so downgraded clients no longer
-  hit an encoder exception on those packets.
+  hit an encoder exception on those packets. Spawn packets (`AddPlayer`,
+  `AddEntity`, `AddItemEntity`) are filtered too, not only `SetEntityData`.
+- Clients below 1.21.20 (protocol 712) no longer disconnect on their first item
+  interaction. `PlayerAuthInputPacket` embeds an `ItemUseTransaction` that the
+  pre-712 wire carries without `triggerType`/`clientInteractPrediction`, and
+  `Protocol712to686` only completed the standalone `InventoryTransactionPacket`.
+  Because `PLAYER_AUTH_INPUT` is a critical packet, one failure ended the session.
+- `PlayerListPacket` and `SetScorePacket` restore their packet-level action after
+  the bridge wire round trip, which 1.26.40 moved to per-entry data and
+  `ScorerType.INVALID` respectively.
 - Reflective resolution of moved and renamed Geyser internals, so one relocated
   class disables the extension cleanly instead of breaking class loading.
 - Protocols 1001 and 2168 registered at item schema 271 and 844 at 251, with

@@ -4,6 +4,10 @@ import oxy.geyser.reversion.ouranos.ProtocolInfo;
 import oxy.geyser.reversion.ouranos.converter.ItemTypeDictionary;
 import oxy.geyser.reversion.ouranos.session.SpecialOuranosSession;
 import org.cloudburstmc.protocol.bedrock.codec.BedrockCodec;
+import org.cloudburstmc.nbt.NbtMap;
+import org.cloudburstmc.protocol.bedrock.data.definitions.SimpleBlockDefinition;
+import org.cloudburstmc.protocol.bedrock.data.entity.EntityDataTypes;
+import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.ItemUseTransaction;
 import org.cloudburstmc.protocol.bedrock.packet.*;
 import org.cloudburstmc.protocol.bedrock.data.*;
 import org.cloudburstmc.protocol.bedrock.data.inventory.*;
@@ -260,5 +264,100 @@ class GameplayTranslationTest {
                 "the shaped recipe must survive in the aggregate list");
         assertEquals(shapelessUuid, ((ShapelessRecipeData) decoded.getCraftingData().get(1)).getUuid(),
                 "the shapeless recipe must survive in the aggregate list");
+    }
+
+    @Test
+    void legacyItemInteractionInsidePlayerAuthInputGetsBridgeFields() {
+        // 1.21.0-1.21.2 (685/686) put ItemUseTransaction on the wire without triggerType or
+        // clientInteractPrediction; PlayerAuthInputSerializer_v2168 dereferences both, and
+        // PLAYER_AUTH_INPUT is a critical packet, so a single failure disconnected the session.
+        var session = initialized(686);
+        var packet = new PlayerAuthInputPacket();
+        packet.setPosition(Vector3f.from(4.5f, 65.62f, -9.25f));
+        packet.setRotation(Vector3f.from(12.5f, -170f, 0f));
+        packet.setMotion(Vector2f.from(0.13f, -0.0784f));
+        packet.setTick(987);
+        packet.setDelta(Vector3f.from(0.0312f, -0.0784f, 0.0212f));
+        packet.setInputMode(InputMode.MOUSE);
+        packet.setPlayMode(ClientPlayMode.NORMAL);
+        packet.setInputInteractionModel(InputInteractionModel.CROSSHAIR);
+        packet.setAnalogMoveVector(Vector2f.from(0.71f, -0.71f));
+        packet.getInputData().add(PlayerAuthInputData.PERFORM_ITEM_INTERACTION);
+
+        var use = new ItemUseTransaction();
+        use.setActionType(1); // click block
+        use.setBlockPosition(Vector3i.from(4, 65, -10));
+        use.setBlockFace(1);
+        use.setHotbarSlot(0);
+        use.setItemInHand(item(686, "minecraft:diamond_pickaxe", 1));
+        use.setPlayerPosition(Vector3f.from(4.5f, 65.62f, -9.25f));
+        use.setClickPosition(Vector3f.from(4.5f, 66f, -10f));
+        use.setBlockDefinition(new SimpleBlockDefinition("minecraft:stone", 1, NbtMap.EMPTY));
+        // triggerType and clientInteractPrediction are deliberately left null: a 1.21.2 client
+        // never puts them on the wire.
+        packet.setItemUseTransaction(use);
+
+        var input = Unpooled.buffer();
+        var output = Unpooled.buffer();
+        try {
+            session.encodeClient(packet, input);
+            var id = session.translateServerbound(input, output,
+                    session.getClientCodec().getPacketDefinition(packet.getClass()).getId());
+            assertNotNull(id);
+            var decoded = (PlayerAuthInputPacket) session.getServerCodec().tryDecode(
+                    session.getServerCodecHelper(), output, id);
+            assertEquals(ItemUseTransaction.TriggerType.PLAYER_INPUT,
+                    decoded.getItemUseTransaction().getTriggerType());
+            assertEquals(ItemUseTransaction.PredictedResult.SUCCESS,
+                    decoded.getItemUseTransaction().getClientInteractPrediction());
+            assertEquals(0, output.readableBytes());
+        } finally {
+            input.release();
+            output.release();
+        }
+    }
+
+    @Test
+    void spawnMetadataWithNewParticlesIsStrippedForLegacyClients() {
+        // 1.26.40 added poplar particles to PARTICLE_TYPES; a legacy codec throws when an entity
+        // spawn packet carries one, so the spawn would be dropped entirely.
+        var session = initialized(686);
+        var packet = new AddEntityPacket();
+        packet.setUniqueEntityId(9);
+        packet.setRuntimeEntityId(9);
+        packet.setIdentifier("minecraft:area_effect_cloud");
+        packet.setPosition(Vector3f.ZERO);
+        packet.setMotion(Vector3f.ZERO);
+        packet.setRotation(Vector2f.ZERO);
+        packet.getMetadata().put(EntityDataTypes.AREA_EFFECT_CLOUD_PARTICLE, ParticleType.ORANGE_POPLAR_LEAVES);
+
+        var decoded = (AddEntityPacket) clientbound(session, packet);
+        assertFalse(decoded.getMetadata().containsKey(EntityDataTypes.AREA_EFFECT_CLOUD_PARTICLE),
+                "a 1.26.40-only particle value must not reach a legacy codec");
+    }
+
+    @Test
+    void bridgeWireCarriesPlayerListActionPerEntry() {
+        // 1.26.40 moved PlayerListPacket#action onto each entry, so the bridge round trip leaves the
+        // packet-level field null; legacy codecs write that field and would throw on encode.
+        var session = initialized(686);
+        var packet = new PlayerListPacket();
+        var entry = new PlayerListPacket.Entry(new UUID(0, 50));
+        entry.setAction(PlayerListPacket.Action.ADD);
+        packet.getEntries().add(entry);
+
+        var translated = (PlayerListPacket) session.translateClientbound(packet);
+        assertEquals(PlayerListPacket.Action.ADD, translated.getAction());
+    }
+
+    @Test
+    void bridgeWireExpressScoreRemovalAsScorerType() {
+        // 1.26.40 stopped writing SetScorePacket#action and marks removals with ScorerType.INVALID.
+        var session = initialized(686);
+        var packet = new SetScorePacket();
+        packet.setInfos(List.of(new ScoreInfo(1L, "objective", 0)));
+
+        var translated = (SetScorePacket) session.translateClientbound(packet);
+        assertEquals(SetScorePacket.Action.REMOVE, translated.getAction());
     }
 }

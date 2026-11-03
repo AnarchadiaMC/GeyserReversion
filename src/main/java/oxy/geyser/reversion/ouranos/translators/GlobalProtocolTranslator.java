@@ -13,6 +13,7 @@ import org.cloudburstmc.protocol.bedrock.data.biome.BiomeDefinitions;
 import org.cloudburstmc.protocol.bedrock.data.entity.EntityDataMap;
 import org.cloudburstmc.protocol.bedrock.data.entity.EntityDataType;
 import org.cloudburstmc.protocol.bedrock.data.entity.EntityFlag;
+import org.cloudburstmc.protocol.bedrock.data.ScoreInfo;
 import org.cloudburstmc.protocol.bedrock.data.inventory.itemstack.request.action.*;
 import org.cloudburstmc.protocol.bedrock.packet.*;
 
@@ -111,6 +112,23 @@ public class GlobalProtocolTranslator extends ProtocolToProtocol {
                     entry.setSkin(entry.getSkin().toBuilder().geometryDataEngineVersion(ProtocolInfo.getPacketCodec(wrapped.getOutput()).getMinecraftVersion()).build());
                 }
             }
+            // 1.26.40 moved the action onto each entry; older codecs write it on the packet, so the
+            // bridge round trip leaves the packet-level field null and the legacy encode throws.
+            if (packet.getAction() == null && !packet.getEntries().isEmpty()) {
+                packet.setAction(packet.getEntries().getFirst().getAction());
+            }
+        });
+
+        // 1.26.40 stopped writing SetScorePacket#action and marks removals with ScorerType.INVALID.
+        // Older codecs still write the packet-level action, so restore it for downgraded clients.
+        this.registerClientbound(SetScorePacket.class, wrapped -> {
+            final SetScorePacket packet = (SetScorePacket) wrapped.getPacket();
+            if (packet.getAction() != null) {
+                return;
+            }
+            final boolean removal = !packet.getInfos().isEmpty()
+                    && packet.getInfos().getFirst().getType() == ScoreInfo.ScorerType.INVALID;
+            packet.setAction(removal ? SetScorePacket.Action.REMOVE : SetScorePacket.Action.SET);
         });
 
         final Consumer<WrappedBedrockPacket> playerSkinConsumer = wrapped -> {
